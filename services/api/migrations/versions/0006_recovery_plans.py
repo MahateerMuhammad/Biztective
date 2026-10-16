@@ -111,7 +111,8 @@ def upgrade() -> None:
                 FOREIGN KEY (plan_id, version) REFERENCES recovery_plan_versions (plan_id, version),
             CONSTRAINT plan_decisions_edits
                 CHECK ((decision IN ('request_changes', 'revise')) = (edits IS NOT NULL)),
-            CONSTRAINT plan_decisions_approver CHECK (decision <> 'approve' OR decided_role = 'owner'),
+            CONSTRAINT plan_decisions_approver
+                CHECK (decision <> 'approve' OR decided_role = 'owner'),
             CONSTRAINT plan_decisions_outcome CHECK ((applied_at IS NULL) = (outcome IS NULL))
         );
         -- One decision per paused version, and one revision of an approved version: duplicate

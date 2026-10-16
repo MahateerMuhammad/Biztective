@@ -1220,3 +1220,34 @@ Every Phase 6 objective listed above is implemented and covered by the tests in 
 - **Verification:** `git ls-remote origin refs/heads/main` and `git rev-parse HEAD` both returned `5057ef450469d5729cc4455d35f4fc233a115546`. Only the untracked, non-project `apps/web/AGENTS.md` remained after the commit.
 - **CI:** GitHub Actions results for this commit were not observed at the time of writing and are not claimed.
 - This record is appended in a documentation-only follow-up commit; earlier log entries are unchanged. Application tests were **not rerun** for this bookkeeping-only addition, because no code changed.
+
+---
+
+## Phase 7 — Recovery plans and a durable approval checkpoint
+
+- **Date:** 2026-10-17
+- **Objective and scope:** Per AMD-17. Versioned recovery plans with competing strategies, a deterministic estimator, validation before approval, and owner-only approve, reject and request-changes decisions on one exact plan version and content hash. The decision is an `interrupt()` checkpoint in a separate LangGraph graph. Nothing is executed. AMD-16, Groq as an alternative LLM provider, landed just before this phase.
+- **Implementation commits:**
+  - `9beb6ed` (`feat: AMD-16 Groq as an alternative LLM provider`)
+  - `a3a62a9`: the Phase 7 implementation, under the commit message "Add unit tests for recovery estimator and plan validation".
+  - Both were authored by Mahad-Ghauri and pushed before this entry.
+  - The `a3a62a9` message doesn't follow the AGENTS.md §3 convention (`feat:` naming the phase). It is published history, so it is not rewritten; this note records the mismatch.
+- **Files:**
+  - Backend: `app/recovery/` (catalog, economics, estimator, graph, llm, plan, router, service), migration `0006_recovery_plans`, prompt `explain_strategies.v1`, `tests/recovery/`, `tests/unit/test_recovery_units.py`.
+  - Frontend: the plan page, and the `strategy-card`, `decision-panel` and `start-plan` components.
+  - Contracts: the OpenAPI document and generated types.
+- **Verification in this session (independent review of `a3a62a9`):**
+  - `uv run ruff check .`: **1 error**, E501 at `migrations/versions/0006_recovery_plans.py:114`. CI's lint step would have failed. **Fixed in this follow-up** by wrapping the line; the SQL is unchanged.
+  - `uv run ruff format --check .`: pass. `uv run mypy`: no issues in 136 source files.
+  - `uv run pytest --cov --cov-fail-under=85`: 663 passed, 1 skipped, 5 deselected, 1 failed, 1 error. Coverage 95.43%.
+    - The error (`tests/security/test_secret_exposure.py`, fixture `caplog` not found) was caused by this review's own `-p no:logging` flag. Run normally, the test passes (1 passed).
+    - The failure, `tests/investigation/test_resilience.py::test_corrupt_evidence_is_excluded_from_verdicts_prompts_and_output`, did not reproduce: three isolated runs of the whole file each passed (11/11). It is recorded as **intermittent, root cause not investigated**. The original failure output was not captured.
+  - Frontend: `next typegen && tsc --noEmit` pass (with `BACKEND_URL` set), `eslint` pass, Vitest 43/43 pass.
+  - **Not run:** Playwright E2E, perf benchmarks, live-LLM tests (no API key). CI results are not observed and not claimed.
+- **Known limitations and remaining risks:**
+  - The intermittent resilience test above.
+  - No executor or integration exists yet: approval only records a decision.
+  - Remote CI status for `a3a62a9` is unknown, and it most likely failed lint.
+- **Acceptance criteria status:** The AMD-17 scope is implemented and covered by the recovery test suites listed above. It is complete after the lint fix in this follow-up, apart from the open intermittent test.
+- **Commit hash and GitHub push status:** Appended below after commit.
+- **Next-phase dependencies:** Phase 8 (baseline 11: integrations and execution) builds on approved plan versions and their `content_hash`. Do not begin it in this session.
