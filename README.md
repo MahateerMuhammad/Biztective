@@ -64,7 +64,8 @@ investigation are asked. The APIs are under `/api/v1/businesses/{business_id}/in
 actions are not part of this phase.
 
 Investigations run deterministically by default. For Anthropic, set `LLM_PROVIDER=anthropic` and
-`ANTHROPIC_API_KEY` in the backend environment. Model output cannot change analytical facts or run
+`ANTHROPIC_API_KEY` in the backend environment; for Groq (AMD-16), set `LLM_PROVIDER=groq` and
+`GROQ_API_KEY` (optional `GROQ_MODEL`, default `openai/gpt-oss-120b`). Model output cannot change analytical facts or run
 external actions. `LLM_MAX_CALLS`, `LLM_MAX_TOKENS`, `LLM_DEADLINE_SECONDS` and
 `INVESTIGATION_TIMEOUT_SECONDS` bound execution. To run the separate live integration test:
 
@@ -72,7 +73,8 @@ external actions. `LLM_MAX_CALLS`, `LLM_MAX_TOKENS`, `LLM_DEADLINE_SECONDS` and
 ROOT_LIVE_LLM_TESTS=1 uv run pytest tests/investigation/test_live_model.py -v
 ```
 
-It also requires the normal test database variables and an `ANTHROPIC_API_KEY`. Default tests use
+It also requires the normal test database variables and an `ANTHROPIC_API_KEY`; add
+`ROOT_LIVE_LLM_PROVIDER=groq` to run it against Groq with `GROQ_API_KEY`. Default tests use
 scripted model responses and do not call the provider.
 
 The browser only talks to the Next.js origin. `/api/v1/*` is rewritten to the backend, so session

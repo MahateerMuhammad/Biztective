@@ -34,7 +34,7 @@ from app.investigation.store import emit, transaction
 from app.jobs import queue
 from app.jobs.queue import LeasedJob
 from app.jobs.worker import PermanentJobError
-from app.llm.provider import AnthropicProvider, LlmProvider
+from app.llm.provider import AnthropicProvider, GroqProvider, LlmProvider
 from app.models import (
     AnalysisRevision,
     Business,
@@ -61,6 +61,12 @@ def provider_from_settings(settings: Settings) -> LlmProvider | None:
         return AnthropicProvider(
             api_key=settings.anthropic_api_key.get_secret_value(),
             model=settings.llm_model,
+            effort=settings.llm_effort,
+        )
+    if settings.llm_provider == "groq" and settings.groq_api_key is not None:
+        return GroqProvider(
+            api_key=settings.groq_api_key.get_secret_value(),
+            model=settings.groq_model,
             effort=settings.llm_effort,
         )
     return None

@@ -1,7 +1,8 @@
 """LLM provider boundary (AMD-12): one request shape, one response shape, typed failures.
 
-The Anthropic adapter is the only code that talks to a model. Tests replace it with a scripted
-fake that implements the same protocol; nothing else in the application knows which is used.
+The Anthropic and Groq (AMD-16) adapters are the only code that talks to a model. Tests replace
+them with a scripted fake that implements the same protocol; nothing else in the application
+knows which is used.
 """
 
 from dataclasses import dataclass
@@ -9,6 +10,7 @@ from typing import Any, Literal, Protocol
 
 # Any is restricted to heterogeneous JSON payloads at validated schema/provider boundaries.
 import anthropic
+import httpx
 
 ProviderErrorKind = Literal[
     "timeout", "rate_limited", "unavailable", "refused", "truncated", "invalid_request", "auth"
@@ -119,4 +121,84 @@ class AnthropicProvider:
             stop_reason=message.stop_reason,
             tokens_in=tokens_in,
             tokens_out=usage.output_tokens,
+        )
+
+
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+
+
+class GroqProvider:
+    """Groq's OpenAI-compatible Chat Completions with JSON-schema output (AMD-16).
+
+    Best-effort schema mode (`strict: false`): strict mode would require every property to be
+    required. The gateway validates every response against the full model either way. No
+    client retries: the gateway owns retries so every attempt is budgeted and recorded."""
+
+    name = "groq"
+
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        model: str,
+        effort: Literal["low", "medium", "high"],
+        transport: httpx.AsyncBaseTransport | None = None,
+    ):
+        self.model = model
+        self._effort = effort
+        self._client = httpx.AsyncClient(
+            base_url=GROQ_BASE_URL,
+            headers={"Authorization": f"Bearer {api_key}"},
+            transport=transport,
+        )
+
+    async def complete(self, request: LlmRequest) -> LlmResponse:
+        body = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": request.system},
+                {"role": "user", "content": request.user},
+            ],
+            "max_completion_tokens": request.max_output_tokens,
+            "reasoning_effort": self._effort,
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {"name": request.task, "schema": request.schema, "strict": False},
+            },
+        }
+        try:
+            response = await self._client.post(
+                "/chat/completions", json=body, timeout=request.timeout_seconds
+            )
+        except httpx.TimeoutException as exc:
+            raise ProviderError("timeout") from exc
+        except httpx.TransportError as exc:
+            raise ProviderError("unavailable") from exc
+        status = response.status_code
+        if status == 429:
+            raise ProviderError("rate_limited", _retry_after(response.headers))
+        if status in (401, 403):
+            raise ProviderError("auth")
+        if status >= 500:
+            raise ProviderError("unavailable", _retry_after(response.headers))
+        if status >= 400:
+            raise ProviderError("invalid_request")
+        try:
+            payload = response.json()
+            choice = payload["choices"][0]
+            message = choice["message"]
+            usage = payload.get("usage") or {}
+        except (ValueError, KeyError, IndexError, TypeError) as exc:
+            raise ProviderError("unavailable") from exc
+        finish = choice.get("finish_reason")
+        if message.get("refusal"):
+            raise ProviderError("refused")
+        if finish == "length":
+            raise ProviderError("truncated")
+        return LlmResponse(
+            text=message.get("content"),
+            model=str(payload.get("model", self.model)),
+            stop_reason=finish,
+            tokens_in=int(usage.get("prompt_tokens", 0)),
+            tokens_out=int(usage.get("completion_tokens", 0)),
         )

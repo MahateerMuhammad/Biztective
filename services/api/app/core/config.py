@@ -25,8 +25,10 @@ class Settings(BaseSettings):
     worker_poll_seconds: float = Field(default=1.0, gt=0, le=60)
 
     # LLM gateway (AMD-12). "disabled" runs every investigation in deterministic mode.
-    llm_provider: Literal["disabled", "anthropic"] = "disabled"
+    llm_provider: Literal["disabled", "anthropic", "groq"] = "disabled"
     anthropic_api_key: SecretStr | None = None
+    groq_api_key: SecretStr | None = None  # AMD-16
+    groq_model: str = Field(default="openai/gpt-oss-120b", min_length=1, max_length=100)
     llm_model: str = Field(default="claude-opus-5-5", min_length=1, max_length=100)
     llm_effort: Literal["low", "medium", "high"] = "low"
     llm_timeout_seconds: float = Field(default=60.0, gt=0, le=600)
@@ -71,6 +73,8 @@ class Settings(BaseSettings):
     def _llm_rules(self) -> Settings:
         if self.llm_provider == "anthropic" and self.anthropic_api_key is None:
             raise ValueError("LLM_PROVIDER=anthropic requires ANTHROPIC_API_KEY")
+        if self.llm_provider == "groq" and self.groq_api_key is None:
+            raise ValueError("LLM_PROVIDER=groq requires GROQ_API_KEY")
         # LangGraph ships a tracing client; investigation data must never leave that way.
         enabled = [
             name

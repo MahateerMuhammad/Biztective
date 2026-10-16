@@ -817,3 +817,14 @@ Format:
 - **LLM.** The synthesis prompt becomes `synthesize_findings.v2` (explains `interpretation`); the output schema is unchanged and the Critic rejects intended hypotheses as root causes. The 300-second LLM deadline is measured per active run segment (`run_started_at`), so time spent waiting for a human does not disable the model; call and token budgets remain cumulative per investigation.
 - Reason: The user's Phase 6 instruction (critical scenario, durable interrupts, checkpoint checks, versions and replay), and the baseline gap that no trigger fires when the leading explanation is supported but its intent is unknown.
 - Supersedes: AMD-12 graph and catalog 1.0.0 for new investigations, AMD-12 "status open only" clarifications, the AMD-12 per-investigation LLM wall-clock deadline (now per run segment), ARCHITECTURE §6.4 human-confidence and status precedence where they differ, and AMD-14's Phase 7 mapping (Phase 7 additionally owns the deferred items above).
+
+### AMD-16 — 2026-10-17 — Groq as an alternative LLM provider
+- Affects: AMD-12 (provider boundary, configuration), ARCHITECTURE LLM gateway, SECURITY_MODEL (data sent to a model provider), `.env.example`.
+- **Change.** `LLM_PROVIDER` accepts `groq` in addition to `disabled` and `anthropic`. `GROQ_API_KEY` is required when it is set; `GROQ_MODEL` defaults to `openai/gpt-oss-120b`. `LLM_EFFORT` maps to Groq's `reasoning_effort`.
+- **Adapter.** `GroqProvider` implements the existing `LlmProvider` protocol over Groq's OpenAI-compatible Chat Completions endpoint (`https://api.groq.com/openai/v1`), using the pinned `httpx` client.
+  - Requests carry the same provider-safe JSON schema as `response_format: json_schema` in best-effort mode (`strict: false`), because strict mode requires every property to be required. The gateway still validates every response against the full Pydantic model and the Critic, with the same single repair attempt and deterministic fallback.
+  - No tools, no client retries (the gateway owns retries and budgets) and no telemetry.
+  - HTTP failures map to the same typed `ProviderError` kinds; `finish_reason = length` maps to `truncated`, and a refusal maps to `refused`.
+- **Unchanged.** The gateway, Critic, prompts, budgets, the envelope content (codes, IDs and validated facts only; no imported text, free text or business names) and the deterministic analytical facts. A different model can change wording and prioritization only.
+- Reason: the user asked to run investigations on Groq with their own key.
+- Supersedes: AMD-12's "Anthropic is the only provider adapter" statement. Anthropic remains supported and is selected the same way.

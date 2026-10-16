@@ -357,6 +357,8 @@ LangGraph re-executes an interrupted node from its start on resume. Therefore co
 
 ### 8.2 LLM tasks
 
+> **Amended by AMD-16:** the gateway's provider is Anthropic or Groq (`LLM_PROVIDER`). Both adapters implement the same protocol; validation, budgets, repair and fallback are provider-independent.
+
 > **Amended by AMD-12 (Phase 5):** `request_evidence` returns tool requests as structured JSON (no provider tool calling). `phrase_clarification` and `propose_strategies` are not used in Phase 5.
 
 | Task | Input | Output | Deterministic fallback |

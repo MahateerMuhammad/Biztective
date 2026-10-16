@@ -103,6 +103,7 @@ def make_settings(database_url: str, **overrides: object) -> Settings:
         "frontend_origin": FRONTEND_ORIGIN,
         "log_level": "INFO",
         "worker_enabled": False,  # tests run jobs explicitly (tests/helpers.run_jobs)
+        "llm_provider": "disabled",  # never a real provider from a developer's .env
     }
     values.update(overrides)
     return Settings.model_validate(values)
