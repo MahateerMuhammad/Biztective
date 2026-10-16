@@ -1,0 +1,171 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+  # Ephemeral CI database only (trust auth inside the job's private service network).
+  PGHOST: localhost
+  PGUSER: root_owner
+  PGDATABASE: postgres
+
+jobs:
+  backend:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: services/api
+    services:
+      postgres:
+        image: postgres:18.6-trixie@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+        env:
+          POSTGRES_USER: root_owner
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U root_owner" --health-interval 2s --health-timeout 3s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/api/uv.lock
+      - run: uv sync --locked
+      - name: Provision least-privilege app role
+        run: |
+          APP_PW="$(openssl rand -hex 24)"
+          echo "::add-mask::$APP_PW"
+          echo "TEST_APP_DB_PASSWORD=$APP_PW" >> "$GITHUB_ENV"
+          ROOT_APP_DB_PASSWORD="$APP_PW" ../../infra/postgres/create-app-role.sh
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
+      - name: Tests with coverage gates
+        env:
+          TEST_DATABASE_ADMIN_URL: postgresql+psycopg://root_owner@localhost:5432/postgres
+        run: |
+          uv run pytest --cov --cov-fail-under=85
+          uv run coverage report --include='app/auth/*,app/tenancy/*' --fail-under=95
+      - name: OpenAPI contract is up to date
+        run: |
+          uv run python -m scripts.export_openapi
+          git diff --exit-code openapi.json
+      - run: uv run pip-audit
+
+  frontend:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: apps/web
+    env:
+      BACKEND_URL: http://127.0.0.1:8000
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: apps/web/.nvmrc
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test:coverage
+      - name: Generated API types match the OpenAPI contract
+        run: |
+          npm run api:types
+          git diff --exit-code src/lib/api/schema.d.ts
+      - name: Dependency audit
+        run: |
+          npm audit --omit=dev --audit-level=high
+          npm run audit:gate
+      - run: npm run build
+
+  e2e:
+    needs: [backend, frontend]
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18.6-trixie@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+        env:
+          POSTGRES_USER: root_owner
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: root
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U root_owner" --health-interval 2s --health-timeout 3s
+          --health-retries 30
+    env:
+      ENVIRONMENT: local
+      FRONTEND_ORIGIN: http://localhost:3000
+      BACKEND_URL: http://127.0.0.1:8000
+      E2E_EMAIL: e2e.owner@example.test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/api/uv.lock
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: apps/web/.nvmrc
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Generate ephemeral secrets
+        run: |
+          for name in APP_PW SESSION_SECRET E2E_PASSWORD; do
+            value="$(openssl rand -hex 24)"
+            echo "::add-mask::$value"
+            echo "$name=$value" >> "$GITHUB_ENV"
+          done
+      - name: Database role, migrations and demo seed
+        working-directory: services/api
+        env:
+          DATABASE_URL_MIGRATIONS: postgresql+psycopg://root_owner@localhost:5432/root
+          DEMO_OWNER_EMAIL: e2e.owner@example.test
+          DEMO_BUSINESS_NAME: E2E Retail
+        run: |
+          uv sync --locked
+          ROOT_APP_DB_PASSWORD="$APP_PW" ../../infra/postgres/create-app-role.sh
+          uv run alembic upgrade head
+          DEMO_OWNER_PASSWORD="$E2E_PASSWORD" uv run python -m app.cli seed-demo
+          echo "DATABASE_URL=postgresql+psycopg://root_app:$APP_PW@localhost:5432/root" >> "$GITHUB_ENV"
+      - name: Build web app
+        working-directory: apps/web
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npm run build
+      - name: Browser smoke tests
+        working-directory: apps/web
+        run: npx playwright test
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report
+          retention-days: 7
+
+  secrets:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: gitleaks (full history)
+        run: |
+          curl -sSfL -o gitleaks.tgz \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gitleaks.tgz" | sha256sum -c -
+          tar xzf gitleaks.tgz gitleaks
+          ./gitleaks git --redact --no-banner .

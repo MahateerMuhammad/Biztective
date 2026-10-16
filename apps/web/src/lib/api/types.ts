@@ -1,0 +1,70 @@
+import type { components } from "./schema";
+
+type Schemas = components["schemas"];
+
+export type Me = Schemas["MeResponse"];
+export type User = Schemas["UserOut"];
+export type Business = Schemas["BusinessOut"];
+export type Dataset = Schemas["DatasetOut"];
+export type DatasetPage = Schemas["Page_DatasetOut_"];
+
+/** RFC 9457 problem details returned by the API for every error. */
+export interface Problem {
+  type: string;
+  title: string;
+  status: number;
+  detail: string;
+  code: string;
+  request_id: string | null;
+  errors?: { field: string; code: string; message: string }[];
+}
+
+export class ApiProblem extends Error {
+  readonly status: number;
+  readonly code: string;
+  readonly requestId: string | null;
+  readonly retryAfterSeconds: number | null;
+
+  constructor(problem: Problem, retryAfterSeconds: number | null = null) {
+    super(problem.detail);
+    this.name = "ApiProblem";
+    this.status = problem.status;
+    this.code = problem.code;
+    this.requestId = problem.request_id;
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
+export async function toApiProblem(response: Response): Promise<ApiProblem> {
+  const retryAfter = Number(response.headers.get("Retry-After"));
+  const retryAfterSeconds = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : null;
+  try {
+    const body = (await response.json()) as Partial<Problem>;
+    if (typeof body.code === "string" && typeof body.detail === "string") {
+      return new ApiProblem(
+        {
+          type: body.type ?? "about:blank",
+          title: body.title ?? response.statusText,
+          status: response.status,
+          detail: body.detail,
+          code: body.code,
+          request_id: body.request_id ?? null,
+        },
+        retryAfterSeconds,
+      );
+    }
+  } catch {
+    // Non-JSON error body (e.g. a proxy failure): fall through to a generic problem.
+  }
+  return new ApiProblem(
+    {
+      type: "about:blank",
+      title: response.statusText || "Error",
+      status: response.status,
+      detail: "The request could not be completed.",
+      code: "unexpected_response",
+      request_id: response.headers.get("X-Request-ID"),
+    },
+    retryAfterSeconds,
+  );
+}

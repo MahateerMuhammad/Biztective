@@ -553,7 +553,7 @@ Each phase delivers working code and its tests, migration files (if schema chang
 
 ## 13. Amendments
 
-_No amendments yet. Format:_
+Format:
 
 ```
 ### AMD-<n> — <YYYY-MM-DD> — Phase <p>
@@ -562,3 +562,78 @@ _No amendments yet. Format:_
 - Reason: <why>
 - Supersedes: <baseline text reference>
 ```
+
+### AMD-1 — 2026-10-16 — Phase 2
+- Affects: ARCHITECTURE §3, §13.1, §14.1; TEST_STRATEGY §2, §6, §7; AGENTS.md R-7; every `backend/` and `frontend/` path in all documents.
+- Change: The monorepo layout is `services/api/` (FastAPI backend, Python package `app`) and `apps/web/` (Next.js frontend). Every baseline reference to `backend/` means `services/api/`, and every reference to `frontend/` means `apps/web/`. Tests live in `services/api/tests/` and `apps/web/tests/`; e2e tests live in `apps/web/e2e/`.
+- Reason: The user's Phase 2 instruction specifies `apps/web` and `services/api`.
+- Supersedes: ARCHITECTURE §3 module tree root names.
+
+### AMD-2 — 2026-10-16 — Phase 2
+- Affects: §8 Phase 2 and Phase 3, §10 traceability (phase column for FR-01, FR-25, SEC-01–06, SEC-18, SEC-20, SEC-25), DATA_CONTRACTS §7.2–§7.4, §7.10.
+- Change: Phase 2 is re-scoped to "Application foundation, authentication and tenancy". In addition to the baseline Phase 2 scope it delivers:
+  - tables `users`, `sessions`, `auth_attempts`, `businesses`, `memberships`, `datasets` (metadata only, read-only to the app) and `audit_log`
+  - the app DB role with RLS
+  - login, logout, me and csrf endpoints for a **seeded demonstration account** (CLI seed reading credentials from the environment)
+  - CSRF, login throttling, the permission dependency, business-scoped read endpoints (`GET /businesses/{bid}`, dataset metadata list and detail, audit log)
+  - the authenticated Next.js shell
+
+  Tests T-12 (login part), T-13, T-14, T-15, T-16, T-17, T-18, T-38 and T-47 run from Phase 2. AC-3.1 to AC-3.6 are met in Phase 2 for the routes that exist, and must be re-verified in Phase 3.
+
+  Phase 3 becomes "Account lifecycle and membership management": `POST /auth/register`, business create, update and delete endpoints, membership management endpoints and UI, the `idempotency_keys` table, T-48 and the registration part of T-12. Its prompt and acceptance criteria otherwise stand.
+- Reason: The user's Phase 2 instruction requires authentication, business-scoped authorization, a minimal schema for businesses, users, dataset metadata and audit events, and an authenticated shell. Self-registration is deferred because the user asked for authentication "appropriate for a seeded demonstration account" and no more complex than needed.
+- Supersedes: §8 Phase 2 "Out of scope: Auth, business logic, database tables beyond Alembic's version table" and Phase 3 scope items listed above.
+
+### AMD-3 — 2026-10-16 — Phase 2
+- Affects: SECURITY_MODEL §6, SEC-06.
+- Change: RLS is `ENABLE`d, not `FORCE`d. The runtime role `root_app` is never a table owner, superuser or `BYPASSRLS`, so RLS always applies to it. `/readyz` verifies those three properties of the connected role and reports not-ready if any is violated. The owner role (migrations and admin seed CLI only) bypasses RLS as the table owner. RLS policies read `NULLIF(current_setting('app.current_business_id', true), '')::uuid`, because the setting reads as an empty string after a transaction-local value is reset. That pattern is safe across connection pooling.
+- Reason: With FORCE, owner-run seeding and migrations would need policy exemptions, which adds complexity without adding protection, since the runtime never connects as the owner. The readiness check makes the guarantee enforced rather than conventional.
+- Supersedes: SECURITY_MODEL §6 "`ALTER TABLE … FORCE ROW LEVEL SECURITY`".
+
+### AMD-4 — 2026-10-16 — Phase 2
+- Affects: SEC-03, SECURITY_MODEL §4.3, DATA_CONTRACTS §6.1 (`users`, `sessions`).
+- Change:
+  - **CSRF** uses the OWASP *signed double-submit cookie*. `GET /auth/csrf` sets an HttpOnly, SameSite=Strict nonce cookie (`__Host-root_csrf` in production) and returns `token = base64url(HMAC-SHA256(SESSION_SECRET, "csrf|" + nonce + "|" + session_binding))`. `session_binding` is the SHA-256 of the session token, or `anon` before login. A pure ASGI middleware verifies the `X-CSRF-Token` header on every unsafe `/api/` request, plus the `Origin` (or `Referer`) = `FRONTEND_ORIGIN` check. The token changes at login, so the client refetches it.
+  - **`sessions`** omits `csrf_secret_hash`, `user_agent_hash` and `ip_prefix`. Nothing would use them yet.
+  - **`users`** omits `failed_login_count` and `locked_until`. Throttling is computed from `auth_attempts`, a single source.
+  - **`users.email`** is lowercase `text` with a `CHECK (email = lower(email))` and a unique index, instead of `citext`. This avoids an extension.
+- Reason: The design is simpler and stateless, with equivalent protection, and has no columns without readers.
+- Supersedes: SECURITY_MODEL §4.3 token derivation, and the DATA_CONTRACTS §6.1 column lists for `users` and `sessions`.
+
+### AMD-5 — 2026-10-16 — Phase 2
+- Affects: ARCHITECTURE §13.1, TEST_STRATEGY §4, DATA_CONTRACTS §7.1.
+- Change:
+  - **Toolchain verified against registries on 2026-10-16:**
+    - Python 3.14.
+    - Node.js 24 LTS. Node 20 reached end-of-life in April 2026, and Vitest 5 and jsdom require Node ≥ 22.
+    - TypeScript 6.0. typescript-eslint supports `<6.1`, so TypeScript 7 is excluded.
+    - ESLint 9. The `eslint-config-next` plugins declare a peer range of `≤ 9`.
+    - PostgreSQL 18 for local development and CI.
+  - **Added dev dependencies:**
+    - `pytest-cov` and `@vitest/coverage-v8`, required by the coverage gates.
+    - `jsdom`, `@testing-library/react` and `@vitejs/plugin-react`, for Vitest component tests.
+  - **Problem `type` URIs** are `urn:root:problem:<code>`, instead of the placeholder domain used in the DATA_CONTRACTS §7.1 example.
+- Reason: The prescribed versions must be current and mutually compatible, and no domain is owned.
+- Supersedes: the ARCHITECTURE §13.1 version notes, and the DATA_CONTRACTS §7.1 example `type` value.
+- Correction (same day, during implementation):
+  - **TypeScript is 5.9.3**, not 6.0. `openapi-typescript` 7.13 declares the peer range `typescript ^5`, and forcing peer resolution is not acceptable.
+  - `@vitejs/plugin-react` is **not** added: Vitest transforms TSX without it.
+  - `vite` 8.3.4 **is** added, because it is a peer dependency of Vitest 5.
+  - **shadcn/ui** is used through its generated components only. Their runtime dependencies are `@base-ui/react`, `class-variance-authority` and `cn`. The `shadcn` CLI and `tw-animate-css` packages are not installed: none of their CSS utilities are used, and the CLI pulled in vulnerable transitive packages.
+  - Next.js `cacheComponents` and `partialPrefetching` are disabled. The per-request nonce CSP (SECURITY_MODEL §7) requires dynamic rendering, and every authenticated page is per-user.
+
+### AMD-7 — 2026-10-16 — Phase 2
+- Affects: TEST_STRATEGY §4 (npm audit gate), SEC-21.
+- Change: The npm audit gate is two checks.
+  - `npm audit --omit=dev --audit-level=high` must report zero findings.
+  - `npm run audit:gate` fails on any high or critical advisory, except those listed with an expiry date in `apps/web/scripts/audit.mjs`.
+
+  One exception is recorded: **GHSA-vfj7-8cjw-p6xm** (`braces`, stack-exhaustion DoS through deeply nested glob patterns). It expires 2027-01-31. No patched release exists, for any version. The package is reachable only through `eslint-config-next` → `@next/eslint-plugin-next` → `fast-glob` → `micromatch` → `braces`. That chain is development-only lint tooling and is not in the production dependency tree, which is verified by the `--omit=dev` audit. Its glob patterns come from repository configuration, never from user input, so the DoS is not attacker-reachable.
+- Reason: Without a fix, a blanket `--audit-level=high` gate would either block all work or tempt a broad ignore. A narrow, dated, documented exception keeps the gate meaningful.
+- Supersedes: the TEST_STRATEGY §4 row "pip-audit, npm audit --audit-level=high: 0 findings" (npm part only).
+
+### AMD-6 — 2026-10-16 — Phase 2
+- Affects: SECURITY_MODEL §10 (audit retention), SEC-18.
+- Change: In Phase 2 the `audit_log` trigger rejects every UPDATE and DELETE, for all roles. The 365-day retention deletion path is designed and amended in Phase 12, when the retention sweep is implemented.
+- Reason: No retention job exists yet. A dormant exemption would be speculative code.
+- Supersedes: SECURITY_MODEL §10 audit-log row (mechanism only; the retention period stands).
