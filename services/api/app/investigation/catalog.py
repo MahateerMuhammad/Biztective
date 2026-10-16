@@ -1,10 +1,15 @@
-"""Hypothesis catalog v1 (ARCHITECTURE §6.2 as amended by AMD-12). Pure data and rules.
+"""Hypothesis catalog 1.1.0 (ARCHITECTURE §6.2 as amended by AMD-12 and AMD-15). Pure data
+and rules.
 
 # Any is confined to JSON/SQL driver boundaries; tool arguments and rules are typed.
 
 A template states a claim, the metrics it can explain, the evidence tool calls it needs (fixed
 parameters, so verdicts never depend on which extra tools an LLM chose), and its criteria.
 Thresholds are part of the catalog version: any change is a version bump.
+
+Human criteria ask one catalog question whose options carry their effect on the criterion
+(confirm, deny, intended, unsure) and the templates worth investigating next (AMD-15). Effects
+are catalog data: nothing is ever derived from a person's free text.
 """
 
 from collections.abc import Callable, Mapping
@@ -18,6 +23,7 @@ from app.investigation.tools import (
     ALL_CHECKS,
     CustomerExposureParams,
     DataQualityParams,
+    MarginBridgeParams,
     MetricBreakdownParams,
     ReturnInvestigationParams,
     SegmentAnalysisParams,
@@ -25,7 +31,7 @@ from app.investigation.tools import (
     ToolParams,
 )
 
-CATALOG_VERSION = "1.0.0"
+CATALOG_VERSION = "1.1.0"
 ALL_METRICS = (
     "net_revenue",
     "gross_margin_pct",
@@ -44,7 +50,9 @@ TemplateName = Literal[
     "H_CHANNEL",
     "H_DATA_QUALITY",
     "H_EXTERNAL_CONTEXT",
+    "H_COST_PRICE",
 ]
+Effect = Literal["confirm", "deny", "intended", "unsure"]
 ALWAYS = ("H_DATA_QUALITY", "H_EXTERNAL_CONTEXT")
 
 
@@ -90,16 +98,34 @@ Rule = Callable[[Lookup], bool | None]  # None: the evidence needed is missing
 
 
 @dataclass(frozen=True)
+class Option:
+    id: str
+    label: str
+    effect: Effect
+    follow_up: tuple[TemplateName, ...] = ()
+
+
+@dataclass(frozen=True)
 class QuestionSpec:
-    type: Literal["boolean", "single_choice"]
     question: str
-    options: tuple[tuple[str, str], ...]
+    options: tuple[Option, ...]
+
+    @property
+    def asks_intent(self) -> bool:
+        """The data can show the mechanism but not whether it was a deliberate decision."""
+        return any(o.effect == "intended" for o in self.options)
+
+    def option(self, option_id: str) -> Option | None:
+        return next((o for o in self.options if o.id == option_id), None)
 
     def as_json(self) -> dict[str, Any]:
         return {
-            "type": self.type,
+            "type": "single_choice",
             "question": self.question,
-            "options": [{"id": i, "label": label} for i, label in self.options],
+            "options": [
+                {"id": o.id, "label": o.label, "effect": o.effect, "follow_up": list(o.follow_up)}
+                for o in self.options
+            ],
         }
 
 
@@ -148,11 +174,12 @@ def _any(*values: bool | None) -> bool | None:
     return None if any(v is None for v in values) else False
 
 
-YES_NO = (("yes", "Yes"), ("no", "No"), ("unsure", "Not sure"))
+UNSURE = Option("unsure", "Not sure", "unsure")
+YES_NO = (Option("yes", "Yes", "confirm"), Option("no", "No", "deny"), UNSURE)
 
 
 def _yes_no(question: str) -> QuestionSpec:
-    return QuestionSpec("boolean", question, YES_NO)
+    return QuestionSpec(question, YES_NO)
 
 
 def _distinct_top_share(lookup: Lookup, requirement: str, threshold: str) -> bool | None:
@@ -187,6 +214,7 @@ BY_CHANNEL = Requirement(
 QUALITY = Requirement(
     "quality", "data_quality_check", lambda _: DataQualityParams(checks=list(ALL_CHECKS))
 )
+MARGIN = Requirement("margin", "margin_bridge", lambda _: MarginBridgeParams())
 
 
 def _returns_c2(lookup: Lookup) -> bool | None:
@@ -330,8 +358,26 @@ TEMPLATES: tuple[Template, ...] = (
                 "support",
                 "human",
                 Decimal("0.3"),
-                "Someone confirms a promotion, coupon or price change.",
-                question=_yes_no("Was a promotion, coupon or price change running in the period?"),
+                "Someone confirms the higher discounting in the period (planned or not).",
+                question=QuestionSpec(
+                    "Was the higher discounting in the period planned, for example a clearance "
+                    "or promotion campaign?",
+                    (
+                        Option(
+                            "planned_campaign",
+                            "Yes, it was a planned clearance or promotion campaign",
+                            "intended",
+                            ("H_RETURNS_QUALITY", "H_COST_PRICE"),
+                        ),
+                        Option("unplanned", "No, discounts were not meant to rise", "confirm"),
+                        Option(
+                            "no_known_change",
+                            "No discount change happened as far as we know",
+                            "deny",
+                        ),
+                        UNSURE,
+                    ),
+                ),
             ),
             Criterion(
                 "R1",
@@ -542,16 +588,81 @@ TEMPLATES: tuple[Template, ...] = (
                 Decimal("1.0"),
                 "Someone confirms an event outside the data.",
                 question=QuestionSpec(
-                    "single_choice",
                     "Was there an event in the period that the data cannot show?",
                     (
-                        ("stockout", "A stockout"),
-                        ("supplier_change", "A supplier change"),
-                        ("promotion", "A promotion or campaign"),
-                        ("seasonal_event", "A seasonal or one-off event"),
-                        ("none", "None of these"),
-                        ("unsure", "Not sure"),
+                        Option("stockout", "A stockout", "confirm"),
+                        Option("supplier_change", "A supplier or product-cost change", "confirm"),
+                        Option("promotion", "A promotion or campaign", "confirm"),
+                        Option("seasonal_event", "A seasonal or one-off event", "confirm"),
+                        Option("none", "None of these", "deny"),
+                        UNSURE,
                     ),
+                ),
+            ),
+        ),
+    ),
+    Template(
+        "H_COST_PRICE",
+        "Selling prices fell relative to product cost, or sales moved to lower-margin products, "
+        "compressing the margin before discounts and refunds.",
+        ("gross_margin_pct",),
+        (MARGIN,),
+        (
+            Criterion(
+                "C1",
+                "support",
+                "data",
+                Decimal("0.6"),
+                "Prices relative to cost (or the product mix) lowered the margin by at least 2 pp.",
+                lambda q: (
+                    None
+                    if (v := q.get("margin", "effect.price_cost")) is None
+                    else v <= Decimal("-0.02")
+                ),
+            ),
+            Criterion(
+                "C2",
+                "support",
+                "data",
+                Decimal("0.4"),
+                "Price and cost explain at least half of the margin decline.",
+                lambda q: _ge(q.get("margin", "adverse.price_cost_share"), "0.50"),
+            ),
+            Criterion(
+                "C3",
+                "support",
+                "human",
+                Decimal("0.3"),
+                "Someone confirms a list-price or product-range change in the period.",
+                question=QuestionSpec(
+                    "Did you lower list prices or change the product range in the period?",
+                    (
+                        Option(
+                            "lowered_prices",
+                            "Yes, we lowered list prices on purpose",
+                            "intended",
+                            ("H_RETURNS_QUALITY",),
+                        ),
+                        Option(
+                            "range_change",
+                            "Yes, sales shifted to cheaper or lower-margin products",
+                            "confirm",
+                        ),
+                        Option("no", "No", "deny"),
+                        UNSURE,
+                    ),
+                ),
+            ),
+            Criterion(
+                "R1",
+                "refute",
+                "data",
+                Decimal("0"),
+                "Price and cost moved the margin by less than 0.5 pp.",
+                lambda q: (
+                    None
+                    if (v := q.get("margin", "effect.price_cost")) is None
+                    else v > Decimal("-0.005")
                 ),
             ),
         ),
@@ -564,3 +675,51 @@ ORDER: dict[str, int] = {t.name: i for i, t in enumerate(TEMPLATES)}
 def candidates(metric: str) -> list[Template]:
     """Applicable templates in catalog order; data quality and external context always."""
     return [t for t in TEMPLATES if metric in t.metrics or t.name in ALWAYS]
+
+
+def human_criterion(template: str) -> Criterion | None:
+    return next((c for c in CATALOG[template].criteria if c.question is not None), None)
+
+
+# Recommended next checks for a root cause, or for a mechanism explained by a deliberate
+# business decision. Investigation steps for people, never executable actions (AMD-15).
+RECOMMENDATIONS: dict[str, tuple[str, str]] = {
+    "H_RETURNS_QUALITY": (
+        "Inspect recent batches, specifications and supplier quality for the affected products.",
+        "Check the affected products' returns once the planned change has settled.",
+    ),
+    "H_FULFILLMENT": (
+        "Review carrier and warehouse performance for the affected region or channel.",
+        "Confirm the planned fulfilment change is performing as expected.",
+    ),
+    "H_PRICE_DISCOUNT": (
+        "Review discount rules, coupon codes and price overrides for the affected products.",
+        "Track the planned campaign against its intended depth and end date; no pricing "
+        "correction is suggested while it runs as planned.",
+    ),
+    "H_SEGMENT_SHIFT": (
+        "Contact regular customers whose purchases fell to learn what changed.",
+        "Watch whether regular customers return after the planned change.",
+    ),
+    "H_CONCENTRATION": (
+        "Review the largest affected accounts individually.",
+        "Confirm the planned change with the largest affected accounts.",
+    ),
+    "H_CHANNEL": (
+        "Review the underperforming channel's listings, pricing and traffic.",
+        "Confirm the planned channel change is performing as expected.",
+    ),
+    "H_DATA_QUALITY": (
+        "Verify order recording and exports for the period before acting on the figures.",
+        "Verify order recording and exports for the period before acting on the figures.",
+    ),
+    "H_EXTERNAL_CONTEXT": (
+        "Record the external event and re-check the figures once it has passed.",
+        "Record the external event and re-check the figures once it has passed.",
+    ),
+    "H_COST_PRICE": (
+        "Compare current list prices, product costs and the sales mix with the baseline period.",
+        "Track margins on the repriced products against the planned price change.",
+    ),
+}
+ANSWER_NEEDED = "Answer the open question so ROOT can separate the competing explanations."

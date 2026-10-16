@@ -394,6 +394,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/businesses/{business_id}/investigations/{investigation_id}/clarifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Clarifications */
+        get: operations["list_clarifications_api_v1_businesses__business_id__investigations__investigation_id__clarifications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/businesses/{business_id}/investigations/{investigation_id}/clarifications/{clarification_id}/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Answer Clarification */
+        post: operations["answer_clarification_api_v1_businesses__business_id__investigations__investigation_id__clarifications__clarification_id__answer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/businesses/{business_id}/investigations/{investigation_id}/events": {
         parameters: {
             query?: never;
@@ -422,6 +456,60 @@ export interface paths {
         put?: never;
         /** Retry Investigation */
         post: operations["retry_investigation_api_v1_businesses__business_id__investigations__investigation_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/businesses/{business_id}/investigations/{investigation_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Versions */
+        get: operations["list_versions_api_v1_businesses__business_id__investigations__investigation_id__versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/businesses/{business_id}/investigations/{investigation_id}/versions/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compare Versions
+         * @description A pure diff of two stored snapshots: no LLM call and no analytics query (AMD-15).
+         */
+        get: operations["compare_versions_api_v1_businesses__business_id__investigations__investigation_id__versions_compare_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/businesses/{business_id}/investigations/{investigation_id}/versions/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Version */
+        get: operations["get_version_api_v1_businesses__business_id__investigations__investigation_id__versions__version__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -490,6 +578,18 @@ export interface components {
             restrictions: {
                 [key: string]: unknown;
             }[];
+        };
+        /**
+         * AnswerClarification
+         * @description A structured option, free text, or both. Free text is stored as untrusted data.
+         */
+        AnswerClarification: {
+            /** Checkpoint Id */
+            checkpoint_id: string;
+            /** Free Text */
+            free_text?: string | null;
+            /** Option Id */
+            option_id?: string | null;
         };
         /** AuditEntryOut */
         AuditEntryOut: {
@@ -1678,6 +1778,79 @@ export interface operations {
             };
         };
     };
+    list_clarifications_api_v1_businesses__business_id__investigations__investigation_id__clarifications_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                investigation_id: string;
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    answer_clarification_api_v1_businesses__business_id__investigations__investigation_id__clarifications__clarification_id__answer_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                investigation_id: string;
+                clarification_id: string;
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnswerClarification"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_events_api_v1_businesses__business_id__investigations__investigation_id__events_get: {
         parameters: {
             query?: {
@@ -1734,6 +1907,112 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_versions_api_v1_businesses__business_id__investigations__investigation_id__versions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                investigation_id: string;
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    compare_versions_api_v1_businesses__business_id__investigations__investigation_id__versions_compare_get: {
+        parameters: {
+            query?: {
+                from_version?: number;
+                to_version?: number | null;
+            };
+            header?: never;
+            path: {
+                investigation_id: string;
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_version_api_v1_businesses__business_id__investigations__investigation_id__versions__version__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                investigation_id: string;
+                version: number;
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

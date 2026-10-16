@@ -88,6 +88,14 @@ def check_tool_result(result: Mapping[str, Any]) -> list[str]:
     dups, lines = numeric(facts.get("near_duplicates.lines")), numeric(facts.get("lines.current"))
     if dups is not None and lines is not None and dups > lines:
         problems.append("duplicates_exceed_lines")
+    margin_change = numeric(facts.get("margin.change"))
+    effects = [numeric(facts.get(f"effect.{n}")) for n in ("discount", "refunds", "price_cost")]
+    if (
+        margin_change is not None
+        and all(e is not None for e in effects)
+        and abs(sum((e for e in effects if e is not None), Decimal(0)) - margin_change) > TOLERANCE
+    ):
+        problems.append("decomposition_does_not_sum: margin")
     for key in ("rows", "contributors"):
         rows = result.get("detail", {}).get(key)
         if isinstance(rows, list):

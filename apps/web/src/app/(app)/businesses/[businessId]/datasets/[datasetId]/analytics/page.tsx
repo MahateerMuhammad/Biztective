@@ -13,9 +13,12 @@ import {
   getIncident,
   getProducts,
   getSegments,
+  listInvestigations,
 } from "@/lib/api/server";
 import type { IncidentDetail, Restriction } from "@/lib/api/types";
 import { METRIC_LABELS, formatChange, formatCount, formatMetric, formatPercent } from "@/lib/format";
+
+import { StartInvestigation } from "./start-investigation";
 
 export const metadata: Metadata = { title: "Analytics" };
 
@@ -126,11 +129,12 @@ export default async function AnalyticsPage({
     );
   }
 
-  const [analysis, comparison, products, segments] = await Promise.all([
+  const [analysis, comparison, products, segments, investigations] = await Promise.all([
     getAnalysis(businessId, datasetId),
     getComparison(businessId, datasetId),
     getProducts(businessId, datasetId),
     getSegments(businessId, datasetId),
+    listInvestigations(businessId, datasetId),
   ]);
   const incidents = analysis
     ? (await Promise.all(analysis.incidents.map((i) => getIncident(businessId, datasetId, i.id)))).filter(
@@ -165,6 +169,39 @@ export default async function AnalyticsPage({
       </div>
 
       <Restrictions items={restrictions} />
+
+      {!running && analysis?.status !== "failed" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              <h2 className="text-base font-semibold">Investigations</h2>
+            </CardTitle>
+            <CardDescription>
+              ROOT explains the incidents with evidence and asks you for context the data cannot
+              show.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            {business.role !== "viewer" ? (
+              <StartInvestigation businessId={businessId} datasetId={datasetId} />
+            ) : null}
+            {investigations.length > 0 ? (
+              <ul className="grid gap-1 text-sm" aria-label="Investigations of this dataset">
+                {investigations.map((i) => (
+                  <li key={i.id}>
+                    <Link
+                      href={`/businesses/${businessId}/investigations/${i.id}`}
+                      className="underline-offset-4 hover:underline"
+                    >
+                      Investigation of {i.created_at.slice(0, 10)}: {i.status.replaceAll("_", " ")}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
 
       {overall && period ? (
         <Card>

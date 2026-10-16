@@ -1,8 +1,10 @@
 """The structured investigation output: loaded from the database, never from graph state.
 
-Observations (code-rendered source facts), hypotheses with their deterministic evaluations,
-open context requests, data gaps and the narrative are kept apart, and every number shown
-carries the evidence ID and field it was read from.
+Observations (code-rendered source facts), hypotheses with their latest deterministic
+evaluations, human context, clarifications, data gaps, recommendations and the narrative are
+kept apart, and every number shown carries the evidence ID and field it was read from. A
+person's free text is returned as plain data only: it never passes through the placeholder
+renderer (AMD-15).
 
 Any annotations represent heterogeneous JSON response fields and evidence payloads; facts
 are verified by the critic and rendered through server-owned templates.
@@ -17,7 +19,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.investigation.catalog import CATALOG, ORDER
+from app.investigation.catalog import ANSWER_NEEDED, CATALOG, ORDER, RECOMMENDATIONS
 from app.investigation.critic import Citations
 from app.investigation.facts import DIMENSION_ENTITY, entity_token, llm_fields
 from app.investigation.render import METRIC_LABELS, Renderer, observations
@@ -27,11 +29,13 @@ from app.models import (
     Clarification,
     Dataset,
     Finding,
+    HumanInput,
     Hypothesis,
     HypothesisEvaluation,
     Incident,
     Investigation,
     Product,
+    User,
 )
 
 
@@ -48,6 +52,15 @@ class HypothesisView:
     def confidence(self) -> Decimal:
         return self.evaluation.confidence if self.evaluation else Decimal(0)
 
+    @property
+    def interpretation(self) -> str | None:
+        return self.evaluation.interpretation if self.evaluation else None
+
+    @property
+    def explained(self) -> bool:
+        """Supported, but the business confirmed the mechanism was a deliberate decision."""
+        return self.status == "supported" and self.interpretation == "intended"
+
 
 @dataclass
 class Loaded:
@@ -60,6 +73,8 @@ class Loaded:
     clarifications: list[Clarification]
     findings: Finding | None
     product_names: dict[str, str] = field(default_factory=dict)
+    human_inputs: list[HumanInput] = field(default_factory=list)
+    user_names: dict[UUID, str] = field(default_factory=dict)
 
     @property
     def investigated(self) -> list[Incident]:
@@ -117,16 +132,8 @@ async def load(session: AsyncSession, investigation: Investigation) -> Loaded:
         )
     )
     evidence = await linked_evidence(session, investigation.id)
-    rows = (
-        await session.execute(
-            select(Hypothesis, HypothesisEvaluation)
-            .outerjoin(HypothesisEvaluation, HypothesisEvaluation.hypothesis_id == Hypothesis.id)
-            .where(Hypothesis.investigation_id == investigation.id)
-            .order_by(Hypothesis.priority, Hypothesis.created_at)
-        )
-    ).all()
     hypotheses: dict[UUID, list[HypothesisView]] = {}
-    for hypothesis, evaluation in rows:
+    for hypothesis, evaluation in await latest_evaluations(session, investigation.id):
         hypotheses.setdefault(hypothesis.incident_id, []).append(
             HypothesisView(hypothesis, evaluation)
         )
@@ -138,8 +145,26 @@ async def load(session: AsyncSession, investigation: Investigation) -> Loaded:
         )
     )
     findings = await session.scalar(
-        select(Finding).where(Finding.investigation_id == investigation.id, Finding.round == 1)
+        select(Finding)
+        .where(Finding.investigation_id == investigation.id)
+        .order_by(Finding.round.desc())
+        .limit(1)
     )
+    human_inputs = list(
+        await session.scalars(
+            select(HumanInput)
+            .where(HumanInput.investigation_id == investigation.id)
+            .order_by(HumanInput.answered_at, HumanInput.id)
+        )
+    )
+    user_names: dict[UUID, str] = {}
+    if human_inputs:
+        user_names = {
+            u.id: u.display_name
+            for u in await session.scalars(
+                select(User).where(User.id.in_({h.answered_by for h in human_inputs}))
+            )
+        }
     product_ids = {
         f["value"]
         for items in evidence.values()
@@ -168,21 +193,114 @@ async def load(session: AsyncSession, investigation: Investigation) -> Loaded:
         clarifications,
         findings,
         names,
+        human_inputs,
+        user_names,
     )
 
 
+async def latest_evaluations(
+    session: AsyncSession, investigation_id: UUID, incident_id: UUID | None = None
+) -> list[tuple[Hypothesis, HypothesisEvaluation | None]]:
+    """Each hypothesis with its current (latest) evaluation; earlier ones stay as history."""
+    query = (
+        select(Hypothesis, HypothesisEvaluation)
+        .outerjoin(HypothesisEvaluation, HypothesisEvaluation.hypothesis_id == Hypothesis.id)
+        .where(Hypothesis.investigation_id == investigation_id)
+        .order_by(
+            Hypothesis.priority,
+            Hypothesis.created_at,
+            Hypothesis.id,
+            HypothesisEvaluation.evaluated_at,
+            HypothesisEvaluation.id,
+        )
+    )
+    if incident_id is not None:
+        query = query.where(Hypothesis.incident_id == incident_id)
+    latest: dict[UUID, tuple[Hypothesis, HypothesisEvaluation | None]] = {}
+    for hypothesis, evaluation in (await session.execute(query)).all():
+        latest[hypothesis.id] = (hypothesis, evaluation)  # later rows overwrite earlier ones
+    return list(latest.values())
+
+
 def ranked(views: list[HypothesisView]) -> list[HypothesisView]:
-    """Supported first, then by confidence, then catalog order (presentation and root cause)."""
-    order = {"supported": 0, "needs_human_context": 1, "inconclusive": 2, "refuted": 3}
+    """Supported problems first, then mechanisms explained by business context, then by
+    status, confidence and catalog order (presentation and root cause)."""
+    order = {"supported": 0, "needs_human_context": 2, "inconclusive": 3, "refuted": 4}
     return sorted(
         views,
-        key=lambda v: (order.get(v.status, 4), -v.confidence, ORDER.get(v.row.template, 99)),
+        key=lambda v: (
+            1 if v.explained else order.get(v.status, 5),
+            -v.confidence,
+            ORDER.get(v.row.template, 99),
+        ),
     )
 
 
 def root_cause(views: list[HypothesisView]) -> HypothesisView | None:
-    supported = [v for v in ranked(views) if v.status == "supported"]
+    """The highest-ranked supported hypothesis that is a problem, not a deliberate decision."""
+    supported = [v for v in ranked(views) if v.status == "supported" and not v.explained]
     return supported[0] if supported else None
+
+
+def recommendations(views: list[HypothesisView], open_question: bool) -> list[dict[str, Any]]:
+    """Recommended next checks (catalog text, never executable actions)."""
+    out: list[dict[str, Any]] = []
+    cause = root_cause(views)
+    if cause is not None:
+        out.append(
+            {
+                "template": cause.row.template,
+                "kind": "fix",
+                "text": RECOMMENDATIONS[cause.row.template][0],
+            }
+        )
+    for v in ranked(views):
+        if v.explained:
+            out.append(
+                {
+                    "template": v.row.template,
+                    "kind": "monitor",
+                    "text": RECOMMENDATIONS[v.row.template][1],
+                }
+            )
+    if cause is None and open_question:
+        out.append({"template": None, "kind": "answer", "text": ANSWER_NEEDED})
+    return out
+
+
+def human_context(loaded: Loaded, incident: Incident) -> list[dict[str, Any]]:
+    """Answers applied to this incident, attributed; free text is plain data (never rendered)."""
+    applied = {
+        str(item.result["detail"]["human_input_id"])
+        for item in loaded.evidence.get(incident.id, [])
+        if item.kind == "human_context"
+    }
+    clarifications = {c.id: c for c in loaded.clarifications}
+    out = []
+    for h in loaded.human_inputs:
+        if str(h.id) not in applied:
+            continue
+        clarification = clarifications.get(h.clarification_id)
+        spec = clarification.question_spec if clarification else {}
+        label = next((o["label"] for o in spec.get("options", []) if o["id"] == h.option_id), None)
+        out.append(
+            {
+                "human_input_id": str(h.id),
+                "clarification_id": str(h.clarification_id),
+                "criterion": h.criterion_key,
+                "question": spec.get("question"),
+                "option_id": h.option_id,
+                "option_label": label,
+                "effect": h.effect,
+                "free_text": h.free_text,
+                "answered_by": {
+                    "id": str(h.answered_by),
+                    "display_name": loaded.user_names.get(h.answered_by),
+                },
+                "answered_at": h.answered_at.isoformat(),
+            }
+        )
+    return out
 
 
 def data_gaps(views: list[HypothesisView]) -> list[dict[str, Any]]:
@@ -238,6 +356,8 @@ def synthesis_context(loaded: Loaded) -> dict[str, Any]:
                         "claim": CATALOG[v.row.template].claim,
                         "status": v.status,
                         "confidence": str(v.confidence),
+                        "interpretation": v.interpretation,
+                        "conflicts": list(v.evaluation.conflicts) if v.evaluation else [],
                         "criteria": [
                             {
                                 "key": c["key"],
@@ -251,10 +371,15 @@ def synthesis_context(loaded: Loaded) -> dict[str, Any]:
                     }
                     for v in views
                 ],
+                # Catalog codes only: a person's free text never reaches the model.
+                "human_context": [
+                    {"criterion": h["criterion"], "option": h["option_id"], "effect": h["effect"]}
+                    for h in human_context(loaded, incident)
+                ],
                 "open_questions": [
                     c.question_spec["question"]
                     for c in loaded.clarifications
-                    if c.incident_id == incident.id
+                    if c.incident_id == incident.id and c.status in ("open", "awaiting")
                 ],
                 "data_gaps": data_gaps(views),
             }
@@ -269,7 +394,7 @@ def synthesis_context(loaded: Loaded) -> dict[str, Any]:
 def fallback_synthesis(loaded: Loaded) -> dict[str, Any]:
     """Deterministic narrative used without an LLM (template text, code-generated)."""
     causes, alternatives, caveats = [], [], []
-    supported = needs_context = 0
+    supported = needs_context = explained = 0
     for incident in loaded.investigated:
         views = ranked(loaded.hypotheses.get(incident.id, []))
         cause = root_cause(views)
@@ -295,6 +420,8 @@ def fallback_synthesis(loaded: Loaded) -> dict[str, Any]:
                     "evidence_refs": refs,
                 }
             )
+        elif any(v.explained for v in views):
+            explained += 1
         elif any(v.status == "needs_human_context" for v in views):
             needs_context += 1
         for v in views:
@@ -319,6 +446,11 @@ def fallback_synthesis(loaded: Loaded) -> dict[str, Any]:
         f"evidence-backed explanation, {needs_context} that need context only the business "
         "can provide."
     )
+    if explained:
+        summary += (
+            f" {explained} explained by a deliberate business decision you confirmed, with no "
+            "other supported cause."
+        )
     return {
         "summary": summary,
         "root_causes": causes,
@@ -339,6 +471,11 @@ def _why_not(view: HypothesisView) -> str:
     if view.status == "needs_human_context":
         question = next((c for c in criteria if c["source"] == "human"), None)
         return f"Needs your context: {question['description']}" if question else "Needs context."
+    if view.explained:
+        return (
+            "Confirmed as a deliberate business decision by your answer, so it is not "
+            "treated as a problem to fix; the measured impact is unchanged."
+        )
     if view.status == "supported":
         return "Supported, but with lower confidence than the leading explanation."
     return "Inconclusive: the evidence was mixed or incomplete."
@@ -374,6 +511,15 @@ def report(loaded: Loaded) -> dict[str, Any]:
                     {"id": str(e.id), "kind": e.kind, "requested_by": e.requested_by} for e in items
                 ],
                 "root_cause_hypothesis_id": str(cause.row.id) if cause else None,
+                "explained_by_context": [str(v.row.id) for v in views if v.explained],
+                "recommendations": recommendations(
+                    views,
+                    any(
+                        c.incident_id == incident.id and c.status in ("open", "awaiting")
+                        for c in loaded.clarifications
+                    ),
+                ),
+                "human_context": human_context(loaded, incident),
                 "hypotheses": [
                     {
                         "id": str(v.row.id),
@@ -387,6 +533,11 @@ def report(loaded: Loaded) -> dict[str, Any]:
                         "data_confidence": str(v.evaluation.data_confidence)
                         if v.evaluation and v.evaluation.data_confidence is not None
                         else None,
+                        "human_confidence": str(v.evaluation.human_confidence)
+                        if v.evaluation and v.evaluation.human_confidence is not None
+                        else None,
+                        "interpretation": v.interpretation,
+                        "conflicts": list(v.evaluation.conflicts) if v.evaluation else [],
                         "criteria": [
                             {
                                 "key": c["key"],
@@ -408,7 +559,9 @@ def report(loaded: Loaded) -> dict[str, Any]:
                         "criterion": c.criterion_key,
                         "question": c.question_spec["question"],
                         "type": c.question_spec["type"],
-                        "options": c.question_spec["options"],
+                        "options": [
+                            {"id": o["id"], "label": o["label"]} for o in c.question_spec["options"]
+                        ],
                         "status": c.status,
                     }
                     for c in loaded.clarifications
@@ -422,6 +575,7 @@ def report(loaded: Loaded) -> dict[str, Any]:
         f = loaded.findings
         findings = {
             "id": str(f.id),
+            "version": f.round,
             "source": f.source,
             "label": "AI interpretation; source facts are listed in observations."
             if f.source == "llm"
@@ -433,8 +587,49 @@ def report(loaded: Loaded) -> dict[str, Any]:
 
 
 def render_findings(loaded: Loaded, content: dict[str, Any]) -> dict[str, Any]:
+    """The narrative (LLM or template) plus deterministic sections: mechanisms explained by
+    business context, answers that contradict the measured data, and the recommended next
+    checks per incident."""
     renderer = loaded.renderer()
+    explained = []
+    conflicts = []
+    recommended = []
+    for incident in loaded.investigated:
+        views = loaded.hypotheses.get(incident.id, [])
+        for v in ranked(views):
+            if v.explained:
+                explained.append(
+                    {
+                        "hypothesis_id": str(v.row.id),
+                        "incident_id": str(incident.id),
+                        "statement": [{"text": CATALOG[v.row.template].claim}],
+                    }
+                )
+            for key in v.evaluation.conflicts if v.evaluation else []:
+                criterion = next(c for c in CATALOG[v.row.template].criteria if c.key == key)
+                conflicts.append(
+                    {
+                        "hypothesis_id": str(v.row.id),
+                        "incident_id": str(incident.id),
+                        "statement": [
+                            {
+                                "text": f"The answer to “{criterion.description}” conflicts "
+                                "with the measured data, so the measurements were kept and "
+                                "the verdict stands: " + CATALOG[v.row.template].claim
+                            }
+                        ],
+                    }
+                )
+        open_question = any(
+            c.incident_id == incident.id and c.status in ("open", "awaiting")
+            for c in loaded.clarifications
+        )
+        for r in recommendations(views, open_question):
+            recommended.append({"incident_id": str(incident.id), **r})
     return {
+        "explained_by_context": explained,
+        "conflicts": conflicts,
+        "recommendations": recommended,
         "summary": renderer.segments(content["summary"]),
         "root_causes": [
             {

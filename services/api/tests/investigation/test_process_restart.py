@@ -13,9 +13,11 @@ from sqlalchemy import Engine, text
 from tests.conftest import DatabaseUrls
 from tests.helpers import create_tenant, login
 from tests.investigation.support import (
+    answer,
     detail,
     events,
     files_of,
+    finish,
     ingest,
     investigate,
     options,
@@ -39,7 +41,7 @@ async def main():
         async def pause(self, state):
             Path(marker).write_text("ready", encoding="utf-8")
             await asyncio.Event().wait()
-        Nodes.verify_evidence = pause
+        setattr(Nodes, os.environ.get("ROOT_RESTART_NODE", "verify_evidence"), pause)
     settings = make_settings(
         os.environ["ROOT_RESTART_DB_URL"], llm_provider="disabled", anthropic_api_key=None
     )
@@ -51,9 +53,12 @@ asyncio.run(main())
 """
 
 
-async def spawn_worker(database_url: str, marker: Path | None = None) -> asyncio.subprocess.Process:
+async def spawn_worker(
+    database_url: str, marker: Path | None = None, node: str = "verify_evidence"
+) -> asyncio.subprocess.Process:
     environment = dict(os.environ)
     environment["ROOT_RESTART_DB_URL"] = database_url
+    environment["ROOT_RESTART_NODE"] = node
     environment.pop("ROOT_RESTART_MARKER", None)
     if marker is not None:
         environment["ROOT_RESTART_MARKER"] = str(marker)
@@ -140,3 +145,81 @@ async def test_sigkill_worker_resumes_durable_checkpoint_in_fresh_process(
             {"i": investigation_id},
         )
     assert duplicates == 0
+
+
+async def test_sigkill_while_applying_an_answer_resumes_exactly_once(
+    app: FastAPI,
+    client: httpx.AsyncClient,
+    owner_engine: Engine,
+    db_urls: DatabaseUrls,
+    tmp_path: Path,
+) -> None:
+    """Answer stored → a worker resumes the graph and is killed inside `apply_answer` → a
+    fresh process resumes from the durable checkpoint and applies the answer once."""
+    tenant = create_tenant(owner_engine, "alice")
+    assert (await login(client, tenant.email)).status_code == 200
+    files, _ = files_of(options(7, "discount_spike"))
+    dataset_id = await ingest(app, client, tenant.business_id, files)
+    body = await investigate(app, client, tenant.business_id, dataset_id)
+    assert body["status"] == "awaiting_human"
+    awaiting = body["awaiting"]
+    response = await answer(
+        client,
+        tenant.business_id,
+        body["id"],
+        awaiting["id"],
+        {"checkpoint_id": awaiting["checkpoint_id"], "option_id": "planned_campaign"},
+    )
+    assert response.status_code == 202
+
+    marker = tmp_path / "worker_paused"
+    killed = await spawn_worker(db_urls.app, marker, node="apply_answer")
+    try:
+        async with asyncio.timeout(30):
+            while not marker.exists():
+                assert killed.returncode is None, "Worker exited before applying the answer."
+                await asyncio.sleep(0.05)
+    finally:
+        if killed.returncode is None:
+            killed.kill()
+        await asyncio.wait_for(killed.communicate(), timeout=5)
+    assert killed.returncode is not None
+    assert killed.returncode < 0
+    with owner_engine.connect() as conn:
+        assert conn.scalar(text("SELECT status FROM clarifications")) == "answered"
+        assert conn.scalar(text("SELECT applied_at FROM human_inputs")) is None
+
+    with owner_engine.begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE jobs SET lease_expires_at = now() - interval '1 second' "
+                "WHERE status = 'running'"
+            )
+        )
+    restarted = await spawn_worker(db_urls.app)
+    try:
+        await asyncio.wait_for(restarted.communicate(), timeout=60)
+        assert restarted.returncode == 0, "Fresh worker must apply the answer and finish."
+    finally:
+        if restarted.returncode is None:
+            restarted.kill()
+            await restarted.communicate()
+
+    after = await detail(client, tenant.business_id, body["id"])
+    assert after["version"] == 2
+    assert after["status"] == "awaiting_human"  # the next question, not a repeat
+    assert after["awaiting"]["id"] != awaiting["id"]
+    timeline = await events(client, tenant.business_id, body["id"])
+    types = Counter(e["type"] for e in timeline)
+    assert types["human.context_added"] == 1
+    assert types["hypotheses.added"] == 1
+    assert types["version.created"] == 2
+    resumed = [e for e in timeline if e["type"] == "run.resumed"]
+    assert [e["payload"]["next"] for e in resumed] == [["await_clarification"], ["apply_answer"]]
+    assert [e["seq"] for e in timeline] == list(range(1, len(timeline) + 1))
+    with owner_engine.connect() as conn:
+        applied = conn.scalar(text("SELECT count(applied_at) FROM human_inputs"))
+        first = conn.scalar(text("SELECT status FROM clarifications ORDER BY created_at LIMIT 1"))
+    assert (applied, first) == (1, "applied")
+    final = await finish(app, client, tenant.business_id, after)
+    assert final["status"] == "completed"

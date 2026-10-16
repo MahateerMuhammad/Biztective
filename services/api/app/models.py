@@ -363,6 +363,7 @@ class Investigation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    run_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class InvestigationEvent(Base):
@@ -374,6 +375,7 @@ class InvestigationEvent(Base):
     seq: Mapped[int] = mapped_column(Integer)
     type: Mapped[str] = mapped_column(Text)
     actor_kind: Mapped[str] = mapped_column(Text)
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column()
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     dedupe_key: Mapped[str] = mapped_column(Text)
     occurred_at: Mapped[datetime] = mapped_column(
@@ -430,6 +432,9 @@ class HypothesisEvaluation(Base):
     data_confidence: Mapped[Decimal | None] = mapped_column(Numeric(5, 4))
     human_confidence: Mapped[Decimal | None] = mapped_column(Numeric(5, 4))
     criteria: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    inputs_hash: Mapped[str] = mapped_column(Text)
+    interpretation: Mapped[str | None] = mapped_column(Text)
+    conflicts: Mapped[list[str]] = mapped_column(JSONB, default=list)
     evaluated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -458,7 +463,13 @@ class Clarification(Base):
     criterion_key: Mapped[str] = mapped_column(Text)
     trigger: Mapped[str] = mapped_column(Text)
     question_spec: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    response_schema: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     status: Mapped[str] = mapped_column(Text, default="open")
+    checkpoint_id: Mapped[str | None] = mapped_column(Text)
+    interrupt_id: Mapped[str | None] = mapped_column(Text)
+    asked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -473,4 +484,38 @@ class Finding(Base):
     rendered: Mapped[dict[str, Any]] = mapped_column(JSONB)
     source: Mapped[str] = mapped_column(Text)
     llm_call_id: Mapped[uuid.UUID | None] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class HumanInput(Base):
+    __tablename__ = "human_inputs"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid7)
+    business_id: Mapped[uuid.UUID] = mapped_column()
+    investigation_id: Mapped[uuid.UUID] = mapped_column()
+    clarification_id: Mapped[uuid.UUID] = mapped_column()
+    kind: Mapped[str] = mapped_column(Text, default="context")
+    criterion_key: Mapped[str] = mapped_column(Text)
+    option_id: Mapped[str | None] = mapped_column(Text)
+    effect: Mapped[str] = mapped_column(Text)
+    free_text: Mapped[str | None] = mapped_column(Text)
+    checkpoint_id: Mapped[str] = mapped_column(Text)
+    answered_by: Mapped[uuid.UUID] = mapped_column()
+    answered_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class InvestigationVersion(Base):
+    __tablename__ = "investigation_versions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid7)
+    business_id: Mapped[uuid.UUID] = mapped_column()
+    investigation_id: Mapped[uuid.UUID] = mapped_column()
+    version: Mapped[int] = mapped_column(SmallInteger)
+    findings_id: Mapped[uuid.UUID] = mapped_column()
+    caused_by_input_id: Mapped[uuid.UUID | None] = mapped_column()
+    snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    snapshot_hash: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

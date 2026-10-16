@@ -189,7 +189,7 @@ class SynthesisOutput(Strict):
     caveats: Annotated[list[Text300], Field(max_length=5)]
 
 
-SYNTHESIZE = Task("synthesize_findings", 1, SynthesisOutput)
+SYNTHESIZE = Task("synthesize_findings", 2, SynthesisOutput)
 
 
 def validate_synthesis(

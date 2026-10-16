@@ -34,6 +34,8 @@ TENANT_TABLES = (
     "clarifications",
     "findings",
     "llm_calls",
+    "human_inputs",
+    "investigation_versions",
 )
 
 
@@ -137,7 +139,17 @@ def test_audit_insert_for_foreign_business_is_rejected(
         "UPDATE hypotheses SET template = 'H_CHANNEL'",
         "UPDATE hypothesis_evaluations SET status = 'supported'",
         "DELETE FROM investigation_evidence",
-        "UPDATE clarifications SET status = 'open'",
+        "UPDATE clarifications SET question_spec = '{}'",
+        "UPDATE clarifications SET business_id = gen_random_uuid()",
+        "DELETE FROM clarifications",
+        "UPDATE human_inputs SET free_text = 'rewritten'",
+        "UPDATE human_inputs SET option_id = 'unplanned'",
+        "UPDATE human_inputs SET answered_by = gen_random_uuid()",
+        "DELETE FROM human_inputs",
+        "UPDATE investigation_versions SET snapshot = '{}'",
+        "DELETE FROM investigation_versions",
+        "UPDATE hypothesis_evaluations SET interpretation = 'intended'",
+        "UPDATE investigation_events SET actor_user_id = gen_random_uuid()",
         "UPDATE findings SET content = '{}'",
         "UPDATE llm_calls SET output = NULL",
         "DELETE FROM llm_calls",

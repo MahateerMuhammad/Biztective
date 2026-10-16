@@ -70,6 +70,7 @@ ToolName = Literal[
     "customer_exposure",
     "evidence_lookup",
     "data_quality_check",
+    "margin_bridge",
 ]
 TOP_ROWS = 10  # rows kept in a breakdown's detail
 TOP_FACTS = 5  # rows exposed as facts
@@ -123,6 +124,10 @@ class DataQualityParams(ToolParams):
         if len(set(value)) != len(value):
             raise ValueError("checks must be unique")
         return value
+
+
+class MarginBridgeParams(ToolParams):
+    pass
 
 
 # ------------------------------------------------------------------------------ runtime scope
@@ -861,6 +866,110 @@ async def data_quality_check(ctx: ToolContext, params: DataQualityParams) -> dic
     return {"facts": facts, "detail": {"checks": sorted(checks)}}
 
 
+MARGIN_EFFECTS = ("discount", "refunds", "price_cost")  # substitution order (AMD-15)
+
+
+def margin_of(d: Decimal, r: Decimal, c: Decimal) -> Decimal | None:
+    """Gross margin from its ratio drivers, all relative to gross sales except r:
+    d = discounts / gross, r = refunds / net sales, c = (COGS sold − COGS restocked) / gross.
+    gross_profit / net_revenue = 1 − c / ((1 − d)(1 − r)); undefined without net revenue."""
+    with localcontext(analytics_context()):
+        base = (1 - d) * (1 - r)
+        return None if base <= 0 else 1 - c / base
+
+
+@dataclass(frozen=True)
+class MarginDrivers:
+    d: Decimal
+    r: Decimal
+    c: Decimal
+
+    @classmethod
+    def of(cls, t: Totals) -> MarginDrivers | None:
+        """None when costs are incomplete (no COGS estimate, AMD-10) or nothing was sold."""
+        m = derive(t)
+        sold, restocked = m["cogs_sold"], m["cogs_restocked"]
+        if sold is None or restocked is None or t.gross_sales <= 0:
+            return None
+        net_sales = t.gross_sales - t.discounts
+        with localcontext(analytics_context()):
+            return cls(
+                d=t.discounts / t.gross_sales,
+                r=t.refunds / net_sales if net_sales > 0 else Decimal(0),
+                c=(Decimal(sold) - Decimal(restocked)) / t.gross_sales,
+            )
+
+
+def margin_effects(b: MarginDrivers, w: MarginDrivers) -> dict[str, Decimal] | None:
+    """Exact sequential decomposition of the margin change (baseline → current), substituting
+    the discount driver, then refunds, then price/cost (incl. mix and restocking). The three
+    effects sum to the total change; None when an intermediate margin is undefined."""
+    steps = [
+        margin_of(b.d, b.r, b.c),
+        margin_of(w.d, b.r, b.c),
+        margin_of(w.d, w.r, b.c),
+        margin_of(w.d, w.r, w.c),
+    ]
+    if any(s is None for s in steps):
+        return None
+    m = [s for s in steps if s is not None]
+    with localcontext(analytics_context()):
+        return {name: m[i + 1] - m[i] for i, name in enumerate(MARGIN_EFFECTS)}
+
+
+async def margin_bridge(ctx: ToolContext, params: MarginBridgeParams) -> dict[str, Any]:
+    scope = ctx.scope
+    w = scope.windows
+    if scope.dimension == "customer_segment":
+        await ctx.ensure_segments()
+    weekly = await queries.aggregate(
+        ctx.session, scope.dataset_id, w.start, w.end, by_week=True, where=scope.where
+    )
+    baseline_weeks, current_weeks = set(w.baseline), set(w.current)
+    b, cur = Totals(), Totals()
+    for (week, _, _), t in weekly.items():
+        if week in baseline_weeks:
+            b = b + t
+        elif week in current_weeks:
+            cur = cur + t
+    drivers_b, drivers_w = MarginDrivers.of(b), MarginDrivers.of(cur)
+    facts: Facts = {}
+    effects = (
+        margin_effects(drivers_b, drivers_w)
+        if drivers_b is not None and drivers_w is not None
+        else None
+    )
+    margin_b = margin_of(drivers_b.d, drivers_b.r, drivers_b.c) if drivers_b else None
+    margin_w = margin_of(drivers_w.d, drivers_w.r, drivers_w.c) if drivers_w else None
+    facts["margin.baseline"] = fact(margin_b, "ratio")
+    facts["margin.current"] = fact(margin_w, "ratio")
+    facts["margin.change"] = fact(_diff(margin_w, margin_b), "pp")
+    for name in ("d", "r", "c"):
+        label = {"d": "discount_rate", "r": "refund_rate", "c": "cost_ratio"}[name]
+        facts[f"{label}.baseline"] = fact(getattr(drivers_b, name) if drivers_b else None, "ratio")
+        facts[f"{label}.current"] = fact(getattr(drivers_w, name) if drivers_w else None, "ratio")
+    largest: str | None = None
+    with localcontext(analytics_context()):
+        adverse = {k: max(-v, Decimal(0)) for k, v in (effects or {}).items()}
+        total_adverse = sum(adverse.values(), Decimal(0))
+        for name in MARGIN_EFFECTS:
+            facts[f"effect.{name}"] = fact(effects[name] if effects else None, "pp")
+            facts[f"adverse.{name}_share"] = fact(
+                adverse[name] / total_adverse if effects and total_adverse > 0 else None, "ratio"
+            )
+        if total_adverse > 0:
+            largest = max(MARGIN_EFFECTS, key=lambda n: (adverse[n], -MARGIN_EFFECTS.index(n)))
+    facts["adverse.largest"] = {"value": largest, "unit": "code"}
+    return {
+        "facts": facts,
+        "detail": {
+            "weeks": {"baseline": len(w.baseline), "current": len(w.current)},
+            "order": list(MARGIN_EFFECTS),
+            "restrictions": [] if effects is not None else ["missing_costs_or_undefined_margin"],
+        },
+    }
+
+
 # --------------------------------------------------------------------------------- registry
 
 
@@ -930,6 +1039,14 @@ TOOLS: dict[str, ToolSpec] = {
             "products without cost and immature returns in the current window.",
             "1",
             data_quality_check,
+        ),
+        ToolSpec(
+            "margin_bridge",
+            MarginBridgeParams,
+            "Exact decomposition of the slice's gross-margin change into discount, refund and "
+            "price/cost (incl. product mix and restocking) effects, baseline vs current.",
+            "1",
+            margin_bridge,
         ),
     )
 }

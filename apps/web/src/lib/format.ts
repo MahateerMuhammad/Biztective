@@ -71,3 +71,29 @@ export const METRIC_LABELS: Record<string, string> = {
   repeat_customer_rate: "Repeat-customer rate",
   matured_cohort_refund_rate: "Matured cohort refund rate",
 };
+
+/** Short names of the hypothesis catalog templates (services/api app/investigation/catalog.py). */
+export const TEMPLATE_LABELS: Record<string, string> = {
+  H_RETURNS_QUALITY: "Product quality driving returns",
+  H_FULFILLMENT: "Delivery problems",
+  H_PRICE_DISCOUNT: "Heavier discounting",
+  H_SEGMENT_SHIFT: "Regular customers buying less",
+  H_CONCENTRATION: "A few customers",
+  H_CHANNEL: "One sales channel",
+  H_DATA_QUALITY: "A data artefact",
+  H_EXTERNAL_CONTEXT: "An event outside the data",
+  H_COST_PRICE: "Prices relative to cost",
+};
+
+export const STATUS_LABELS: Record<string, string> = {
+  pending: "Pending",
+  supported: "Supported",
+  refuted: "Ruled out",
+  inconclusive: "Inconclusive",
+  needs_human_context: "Needs your context",
+};
+
+export function templateLabel(template: string | null | undefined): string {
+  if (!template) return "None";
+  return TEMPLATE_LABELS[template] ?? template;
+}

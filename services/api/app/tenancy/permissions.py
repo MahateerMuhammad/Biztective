@@ -19,6 +19,7 @@ class Permission(StrEnum):
     ANALYSIS_RUN = "analysis:run"
     INVESTIGATION_READ = "investigation:read"
     INVESTIGATION_RUN = "investigation:run"
+    HITL_ANSWER = "hitl:answer"
 
 
 ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
@@ -32,6 +33,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.ANALYSIS_RUN,
             Permission.INVESTIGATION_READ,
             Permission.INVESTIGATION_RUN,
+            Permission.HITL_ANSWER,
         }
     ),
     "viewer": frozenset(

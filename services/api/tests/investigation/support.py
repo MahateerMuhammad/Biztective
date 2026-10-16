@@ -138,3 +138,70 @@ def planted(body: dict[str, Any], manifest: dict[str, str], metric: str) -> dict
     ]
     assert matches, [(i["metric"], i["dimension"], i["value"]) for i in body["incidents"]]
     return matches[0]
+
+
+async def answer(
+    client: httpx.AsyncClient,
+    business_id: uuid.UUID,
+    investigation_id: str,
+    clarification_id: str,
+    body: dict[str, Any],
+    idempotency_key: str | None = None,
+) -> httpx.Response:
+    headers = await csrf_headers(client)
+    if idempotency_key is not None:
+        headers["Idempotency-Key"] = idempotency_key
+    return await client.post(
+        f"/api/v1/businesses/{business_id}/investigations/{investigation_id}"
+        f"/clarifications/{clarification_id}/answer",
+        json=body,
+        headers=headers,
+    )
+
+
+async def respond(
+    app: FastAPI,
+    client: httpx.AsyncClient,
+    business_id: uuid.UUID,
+    body: dict[str, Any],
+    option: str | None = None,
+    free_text: str | None = None,
+) -> dict[str, Any]:
+    """Answer the question the investigation is waiting for, run the resume, return detail."""
+    awaiting = body["awaiting"]
+    assert awaiting is not None, body["status"]
+    payload: dict[str, Any] = {"checkpoint_id": awaiting["checkpoint_id"]}
+    if option is not None:
+        payload["option_id"] = option
+    if free_text is not None:
+        payload["free_text"] = free_text
+    response = await answer(client, business_id, body["id"], awaiting["id"], payload)
+    assert response.status_code == 202, response.text
+    await run_jobs(app, limit=20)
+    return await detail(client, business_id, body["id"])
+
+
+async def finish(
+    app: FastAPI, client: httpx.AsyncClient, business_id: uuid.UUID, body: dict[str, Any]
+) -> dict[str, Any]:
+    """Answer every remaining question "Not sure" (it changes no verdict) until done."""
+    while body["status"] == "awaiting_human":
+        body = await respond(app, client, business_id, body, option="unsure")
+    return body
+
+
+def incident_by_key(body: dict[str, Any], key: str) -> dict[str, Any]:
+    found: dict[str, Any] = next(i for i in body["incidents"] if i["key"] == key)
+    return found
+
+
+def hypothesis(incident: dict[str, Any], template: str) -> dict[str, Any] | None:
+    return next((h for h in incident["hypotheses"] if h["template"] == template), None)
+
+
+def root_template(incident: dict[str, Any]) -> str | None:
+    root = next(
+        (h for h in incident["hypotheses"] if h["id"] == incident["root_cause_hypothesis_id"]),
+        None,
+    )
+    return root["template"] if root else None

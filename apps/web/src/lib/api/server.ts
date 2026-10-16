@@ -11,10 +11,14 @@ import type {
   DatasetDetail,
   DatasetPage,
   IncidentDetail,
+  InvestigationDetail,
+  InvestigationSummary,
   IssuePage,
   Me,
   ProductRow,
   SegmentSummary,
+  VersionComparison,
+  VersionSummary,
 } from "./types";
 import { toApiProblem } from "./types";
 
@@ -126,5 +130,36 @@ export function getSegments(businessId: string, datasetId: string) {
 export function getIncident(businessId: string, datasetId: string, incidentId: string) {
   return analyticsGet<IncidentDetail>(
     `${datasetPath(businessId, datasetId)}/incidents/${encodeURIComponent(incidentId)}`,
+  );
+}
+
+function investigationPath(businessId: string, investigationId: string): string {
+  return `/api/v1/businesses/${encodeURIComponent(businessId)}/investigations/${encodeURIComponent(investigationId)}`;
+}
+
+export async function listInvestigations(
+  businessId: string,
+  datasetId: string,
+): Promise<InvestigationSummary[]> {
+  const page = await analyticsGet<{ items: InvestigationSummary[] }>(
+    `/api/v1/businesses/${encodeURIComponent(businessId)}/investigations?dataset_id=${encodeURIComponent(datasetId)}`,
+  );
+  return page?.items ?? [];
+}
+
+export function getInvestigation(businessId: string, investigationId: string) {
+  return analyticsGet<InvestigationDetail>(investigationPath(businessId, investigationId));
+}
+
+export async function listVersions(businessId: string, investigationId: string): Promise<VersionSummary[]> {
+  const page = await analyticsGet<{ items: VersionSummary[] }>(
+    `${investigationPath(businessId, investigationId)}/versions`,
+  );
+  return page?.items ?? [];
+}
+
+export function compareVersions(businessId: string, investigationId: string, from: number, to: number) {
+  return analyticsGet<VersionComparison>(
+    `${investigationPath(businessId, investigationId)}/versions/compare?from_version=${from}&to_version=${to}`,
   );
 }

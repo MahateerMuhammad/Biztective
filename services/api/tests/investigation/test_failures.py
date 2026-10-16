@@ -20,6 +20,7 @@ from tests.helpers import Tenant, create_tenant, csrf_headers, login, run_jobs
 from tests.investigation.support import (
     events,
     files_of,
+    finish,
     ingest,
     investigate,
     options,
@@ -363,6 +364,7 @@ async def test_tool_failure_is_contained_and_reported(
     spec = tools.TOOLS["return_investigation"]
     monkeypatch.setitem(tools.TOOLS, "return_investigation", dataclasses.replace(spec, run=broken))
     body = await investigate(app, client, owner.business_id, dataset_id)
+    body = await finish(app, client, owner.business_id, body)  # "Not sure": no new context
 
     assert body["status"] == "completed"
     incident = planted(body, manifest, "refund_rate")

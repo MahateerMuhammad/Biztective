@@ -24,8 +24,8 @@ docker compose up -d --wait
 cd services/api
 cp .env.example .env            # fill the CHANGE_ME passwords, SESSION_SECRET and DEMO_* values
 uv sync --locked
-uv run alembic upgrade head     # runs as the owner role (DATABASE_URL_MIGRATIONS)
-uv run python -m app.cli seed-demo
+uv run --env-file .env alembic upgrade head   # owner role (DATABASE_URL_MIGRATIONS from .env)
+uv run --env-file .env python -m app.cli seed-demo
 uv run uvicorn app.main:create_app --factory --port 8000
 
 # 3. Frontend (new terminal)
@@ -50,11 +50,18 @@ After validation, ROOT analyses each ready dataset automatically. Open **View an
 - deterministic incidents, each with its source-record evidence
 - any data limitations (for example missing costs) that make a figure unavailable
 
-Phase 5 adds backend investigation APIs under `/api/v1/businesses/{business_id}/investigations`.
-POST a ready `dataset_id` after its analysis finishes; GET the investigation and its cursor-based
-`/events` to inspect source observations, competing hypotheses, verified evidence and open context
-requests. The workflow checkpoints to PostgreSQL after every node. No human-answer, recovery-action
-or investigation UI is included in this phase.
+From the analytics page, **Start investigation** opens the Investigation Workspace. ROOT
+investigates every incident with read-only evidence tools, drafts findings (version 1) and then
+pauses durably on the single most useful question the data cannot answer, for example whether a
+discount rise was a planned clearance. An owner or analyst answers with an option and optional
+free text; the answer must quote the paused checkpoint, is stored with its author, and resumes the
+exact LangGraph checkpoint. ROOT re-evaluates the affected hypotheses, investigates the
+alternatives the answer points to, and records a new version. **Investigation replay** compares
+any two versions: which findings, hypotheses, root causes and recommendations changed, and that
+every original measurement is unchanged. At most 3 questions per incident and 6 per
+investigation are asked. The APIs are under `/api/v1/businesses/{business_id}/investigations`
+(see DATA_CONTRACTS §12–§13); the workflow checkpoints to PostgreSQL after every node. Recovery
+actions are not part of this phase.
 
 Investigations run deterministically by default. For Anthropic, set `LLM_PROVIDER=anthropic` and
 `ANTHROPIC_API_KEY` in the backend environment. Model output cannot change analytical facts or run
@@ -86,7 +93,7 @@ uv run pip-audit
 cd apps/web
 npm run lint && npm run typecheck && npm run test:coverage && npm run build
 npm run audit:gate
-npx playwright test             # needs the backend env vars plus E2E_EMAIL / E2E_PASSWORD
+npx playwright test             # needs the backend env vars plus E2E_EMAIL / E2E_PASSWORD and uv
 ```
 
 CI (`.github/workflows/ci.yml`) runs all of the above plus an OpenAPI/TypeScript contract drift

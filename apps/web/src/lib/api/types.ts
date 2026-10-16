@@ -175,3 +175,206 @@ export interface IncidentDetail extends Omit<IncidentSummary, "evidence"> {
   stats: Record<string, unknown>;
   evidence: { id: string; kind: string; params: Record<string, unknown>; result: Record<string, unknown>; result_hash: string }[];
 }
+
+/** A piece of server-rendered text: plain text, an evidence value, or an entity label. */
+export type Segment =
+  | { text: string }
+  | { value: string; evidence_id: string; field: string }
+  | { entity: string; kind: string };
+
+export interface CriterionView {
+  key: string;
+  description: string;
+  polarity: string;
+  source: "data" | "human";
+  satisfied: boolean | null;
+  basis: Segment[][] | unknown[];
+}
+
+export interface HypothesisView {
+  id: string;
+  template: string;
+  claim: string;
+  source: "catalog" | "llm_prioritized" | "human_context";
+  status: "pending" | "supported" | "refuted" | "inconclusive" | "needs_human_context";
+  confidence: string;
+  data_confidence: string | null;
+  human_confidence: string | null;
+  interpretation: "intended" | "unintended" | null;
+  conflicts: string[];
+  criteria: CriterionView[];
+}
+
+export interface Person {
+  id: string;
+  display_name: string | null;
+}
+
+export interface HumanContext {
+  human_input_id: string;
+  clarification_id: string;
+  criterion: string;
+  question: string | null;
+  option_id: string | null;
+  option_label: string | null;
+  effect: "confirm" | "deny" | "intended" | "unsure" | "unstructured";
+  /** Untrusted text typed by a person: shown as plain text only. */
+  free_text: string | null;
+  answered_by: Person;
+  answered_at: string;
+}
+
+export interface Recommendation {
+  template: string | null;
+  kind: "fix" | "monitor" | "answer";
+  text: string;
+}
+
+export interface InvestigationIncident {
+  id: string;
+  rank: number;
+  key: string;
+  metric: string;
+  metric_label: string;
+  dimension: string;
+  value: string | null;
+  severity: string;
+  investigated: boolean;
+  observations: Segment[][];
+  evidence: { id: string; kind: string; requested_by: string }[];
+  root_cause_hypothesis_id: string | null;
+  explained_by_context: string[];
+  recommendations: Recommendation[];
+  human_context: HumanContext[];
+  hypotheses: HypothesisView[];
+  data_gaps: { template: string; criterion: string; reason: string }[];
+}
+
+export interface Clarification {
+  id: string;
+  incident_id: string;
+  incident_key: string;
+  criterion: string;
+  trigger: string;
+  status: "open" | "awaiting" | "answered" | "applied";
+  question: string;
+  claim: string | null;
+  why: string | null;
+  options: { id: string; label: string }[];
+  response_schema: Record<string, unknown> | null;
+  checkpoint_id: string | null;
+  asked_at: string | null;
+  answered_at: string | null;
+  applied_at: string | null;
+  answer: {
+    human_input_id: string;
+    option_id: string | null;
+    option_label: string | null;
+    effect: string;
+    free_text: string | null;
+    answered_by: Person;
+    answered_at: string;
+  } | null;
+}
+
+export type InvestigationStatus =
+  | "queued"
+  | "running"
+  | "awaiting_human"
+  | "completed"
+  | "completed_no_incidents"
+  | "insufficient_data"
+  | "failed";
+
+export interface InvestigationSummary {
+  id: string;
+  dataset_id: string;
+  revision_id: string;
+  status: InvestigationStatus;
+  phase: string | null;
+  llm_mode: "llm" | "deterministic";
+  llm_disabled_reason: string | null;
+  error_code: string | null;
+  graph_version: string;
+  catalog_version: string;
+  last_seq: number;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface Findings {
+  id: string;
+  version: number;
+  source: "llm" | "deterministic";
+  label: string;
+  rendered: {
+    summary: Segment[];
+    root_causes: { hypothesis_id: string; statement: Segment[]; evidence_refs: string[] }[];
+    explained_by_context?: { hypothesis_id: string; incident_id: string; statement: Segment[] }[];
+    conflicts?: { hypothesis_id: string; incident_id: string; statement: Segment[] }[];
+    alternatives_considered: { hypothesis_id: string; why_not: Segment[]; evidence_refs: string[] }[];
+    caveats: Segment[][];
+    recommendations?: (Recommendation & { incident_id: string })[];
+  };
+  created_at: string;
+}
+
+export interface InvestigationDetail extends InvestigationSummary {
+  version: number | null;
+  awaiting: Clarification | null;
+  currency: string;
+  restrictions: Restriction[];
+  incidents: InvestigationIncident[];
+  findings: Findings | null;
+}
+
+export interface VersionSummary {
+  version: number;
+  snapshot_hash: string;
+  caused_by: {
+    human_input_id: string;
+    criterion: string;
+    option_id: string | null;
+    effect: string;
+    answered_by: string;
+    answered_at: string;
+  } | null;
+  created_at: string;
+}
+
+type Change<T> = { from: T; to: T };
+type AddedRemoved = { added: string[]; removed: string[] };
+
+export interface VersionComparison {
+  from_version: number;
+  to_version: number;
+  caused_by: VersionSummary["caused_by"];
+  measurements_preserved: boolean;
+  incidents: {
+    key: string;
+    added?: boolean;
+    removed?: boolean;
+    measurements_preserved?: boolean;
+    changed_evidence?: string[];
+    new_evidence?: string[];
+    impact?: string;
+    root_cause?: Change<string | null> | null;
+    explained_by_context?: AddedRemoved;
+    hypotheses?: {
+      template: string;
+      added?: boolean;
+      now?: Record<string, unknown>;
+      changes?: Record<string, Change<unknown>>;
+    }[];
+    recommendations?: AddedRemoved;
+    human_context_added?: { criterion: string; option_id: string | null; effect: string }[];
+  }[];
+  findings: {
+    summary: Change<string> | null;
+    root_causes: AddedRemoved;
+    explained_by_context: AddedRemoved;
+    conflicts: AddedRemoved;
+    caveats: AddedRemoved;
+  };
+}

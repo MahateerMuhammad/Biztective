@@ -116,6 +116,8 @@ def _url(path: str, business_id: uuid.UUID, dataset_id: uuid.UUID) -> str:
         .replace("{incident_id}", str(uuid.UUID(int=1)))
         .replace("{investigation_id}", str(uuid.UUID(int=1)))
         .replace("{evidence_id}", str(uuid.UUID(int=1)))
+        .replace("{clarification_id}", str(uuid.UUID(int=1)))
+        .replace("{version}", "1")
     )
 
 

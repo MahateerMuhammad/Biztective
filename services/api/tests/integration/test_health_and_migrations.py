@@ -27,11 +27,13 @@ EXPECTED_TABLES = {
     "evidence_items",
     "findings",
     "hypotheses",
+    "human_inputs",
     "hypothesis_evaluations",
     "idempotency_keys",
     "incidents",
     "investigation_events",
     "investigation_evidence",
+    "investigation_versions",
     "investigations",
     "jobs",
     "llm_calls",
@@ -135,11 +137,11 @@ def test_migrations_upgrade_downgrade_upgrade(admin_url: str, app_password: str)
         assert schemas == 0
 
         command.upgrade(config, "head")
-        for target in ("0003", "0002", "0001"):  # each revision downgrades on its own
+        for target in ("0004", "0003", "0002", "0001"):  # each revision downgrades on its own
             command.downgrade(config, target)
             command.upgrade(config, "head")
         with engine.connect() as conn:
-            assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "0004"
+            assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "0005"
             assert conn.scalar(text("SELECT count(*) FROM analysis_configs")) == 1
     finally:
         engine.dispose()

@@ -228,7 +228,7 @@ async def test_failed_investigation_is_retried_from_its_checkpoint(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     dataset_id, _ = spike
-    fail_once(monkeypatch, "synthesize_output", ValueError("unexpected defect"))
+    fail_once(monkeypatch, "draft_findings", ValueError("unexpected defect"))
     response = await start(client, owner.business_id, dataset_id)
     investigation_id = response.json()["id"]
     await run_jobs(app)

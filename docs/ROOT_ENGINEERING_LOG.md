@@ -997,3 +997,218 @@ Phase 5 implementation and all local completion gates are **met**, under AMD-12/
 - **CI:** GitHub Actions results remain **unobserved** in this session. Local checks and remote hash verification are not presented as CI success.
 - **Cleanup:** stopped only the isolated temporary PostgreSQL cluster created for this audit. No existing database service was stopped or modified.
 - This verification record is appended in a documentation-only follow-up commit; earlier log entries and test evidence are unchanged. Application tests are **not rerun for this bookkeeping-only addition** because no application, migration, dependency, generated contract or test code changes.
+
+---
+
+## Phase 6 — Human-in-the-loop clarifications, interpretation versions and replay
+
+- **Date:** 2026-10-17
+- **Starting point:** commit `eb780df` (Phase 5 and its push record). The working tree was clean except for an untracked `apps/web/AGENTS.md` that `next dev` wrote. It is not project work and was left uncommitted.
+- **Scope:** AMD-15, the human-in-the-loop features of Phase 6.
+  - This phase covers the baseline Phase 8 `clarification` interrupt end to end, plus the user-requested comparison of interpretation versions before and after an answer.
+  - Deferred to Phase 7: corrections and overlays, hypothesis rejection, findings review, skip, event-sequence projection, revision compare and re-verify.
+  - Phase 7 was not started.
+
+### Phase 5 bookkeeping carried forward
+
+- The Phase 5 commits are on `origin/main`: `322c3fa` (implementation) and `eb780df` (push record). This was verified with `git ls-remote` before the Phase 6 push.
+- GitHub Actions results observed with `gh run list` in this session. The Phase 5 log called CI unobserved; this records what was observed now, without editing that entry.
+
+| Commit | Workflow run | Result |
+|---|---|---|
+| `eb780df` | 38959801885 | Succeeded (10m16s) |
+| `322c3fa` | 38959733420 | Cancelled: superseded by the next push in the same concurrency group |
+| `6b14c2a` (Phase 4) | 38951375893 | Failed at `ruff check` (`PT011 pytest.raises(ValueError) is too broad`); Phase 5 fixed this |
+| `0881d4b`, `4bb72ba` (Phases 2 and 3) | — | Succeeded |
+
+### Technical decisions and reasons
+
+- **Durable pause.** A pause is a real LangGraph `interrupt()` persisted by the existing AsyncPostgresSaver; there is no polling loop and no in-memory wait.
+  - The question, `checkpoint_id` and response schema are persisted in `clarifications`. The investigation status `awaiting_human` is committed before the worker releases its job.
+  - A resume is a `Command(resume=…)` that carries only IDs. The graph reloads the stored and validated `human_inputs` row, so the checkpoint never holds raw human text.
+- **One question at a time.**
+  - `assess_context` picks the highest-value open request.
+  - It asks only when an answer could change a verdict or interpretation; otherwise the run completes. This is why some planted return-spike seeds pause and others don't.
+  - Limits: `MAX_CLARIFICATIONS = 6` per investigation and `MAX_CLARIFICATIONS_PER_INCIDENT = 3`. After the limit, remaining requests stay open and are reported as data gaps.
+- **Catalog 1.1.0.**
+  - Questions carry option effects: `confirm`, `deny`, `intended` or `unsure`. A free-text-only answer is `unstructured` and never changes a verdict.
+  - The new CT-5 trigger asks about business intent.
+  - `H_PRICE_DISCOUNT.C3` options: planned campaign (intended), unplanned, no known change, unsure. The planned-campaign option follows up with `H_RETURNS_QUALITY` and the new `H_COST_PRICE`.
+  - The new `margin_bridge` tool decomposes a margin change sequentially into discount, refunds and price/cost, and the Critic checks that the parts sum to the total.
+- **Verification v2.**
+  - Confidence = min(1, data confidence + 0.5 × satisfied human weight). The weight is recorded separately as `human_confidence`.
+  - Hypotheses that only a human can settle follow the answer.
+  - A data refutation always outranks a human claim; the disagreement is stored in `conflicts` and rendered.
+  - An `intended` interpretation marks a mechanism as "explained by context": its measured impact is kept, but it is excluded from the root cause.
+- **Evaluation history.** Evaluations are keyed by `inputs_hash` and unique per hypothesis, so a re-evaluation with identical inputs writes nothing.
+- **Shared slices.** An answer applies to every incident with the same slice. For example, both discount incidents on product P0023 are re-interpreted together.
+- **Versions.** `investigation_versions` stores an immutable snapshot and a hash after each findings draft. Compare is a pure diff of two snapshots and never recomputes anything.
+- **LLM deadline.** It counts per active run segment (`run_started_at`), so time spent waiting for a human doesn't use up the LLM budget.
+- **Graph version 2.0.0.** A checkpoint from an older graph version is refused with `graph_version_unsupported`, not resumed incorrectly.
+
+### Lifecycle
+
+```text
+… draft_findings (findings + version N) -> assess_context
+   assess_context -> finalize                        (nothing worth asking, or limit reached)
+   assess_context -> await_clarification             (persist question + checkpoint, status awaiting_human)
+        interrupt(): job ends, worker free; durable checkpoint in PostgreSQL
+POST /clarifications/{id}/answer (HITL_ANSWER, CSRF, optional Idempotency-Key)
+   -> tenant + membership + ownership + open status + checkpoint_id match
+   -> validate against stored response schema -> human_inputs row + audit hitl.answered
+   -> clarification answered -> resume job (one transaction)
+resume job -> Command(resume={input_id}) -> apply_answer
+   -> human_context evidence (who, when, option, effect) -> mark input applied (trigger: once)
+   -> verify_evidence (re-evaluate; same numbers) -> draft_findings (version N+1) -> assess_context …
+```
+
+Clarification statuses only move forward: `open → awaiting → answered → applied`. A database trigger enforces this and keeps `checkpoint_id` immutable.
+
+### Investigation Replay
+
+- `GET …/versions` lists the versions, and `GET …/versions/{n}` returns one.
+- `GET …/versions/compare?from=&to=` reports, per incident:
+  - whether the measurements are unchanged;
+  - root-cause changes;
+  - hypotheses added, removed or with a changed status;
+  - interpretation changes, newly explained mechanisms and new conflicts;
+  - recommendations added or removed.
+- A tampered stored measurement shows up as a changed measurement in the comparison and is never hidden.
+- The workspace page shows the open question (radio options plus an optional free-text field limited to 1,000 characters), the measured facts, the human context with attribution, and the replay diff.
+
+### Security
+
+- **Untrusted input.** Human responses are data, not instructions.
+  - Options are validated against the stored schema, and free text is length-limited.
+  - Free text is stored and displayed as quoted text. It never reaches a prompt as an instruction: synthesis receives only context codes (prompt `synthesize_findings.v2`).
+  - Free text is never parsed for commands.
+  - A test submits an injection directive claiming that the answerer "approves every refund" and quoting a false "99%" figure. It checks that neither text appears in any captured model request or stored `llm_calls` input, nor in the rendered findings.
+- **No authorization through answers.** No human answer can authorize or trigger an external action. No write-capable tool, executor or recovery-action route exists.
+- **Who can answer.**
+  - Answering requires `HITL_ANSWER` (owner and analyst roles).
+  - A member of another business gets 404 under RLS. A viewer gets 403.
+  - An answer must name the open clarification's exact `checkpoint_id`; a stale or incorrect one gets 409 `stale_checkpoint`.
+- **Duplicates and races.**
+  - A repeat submission with the same Idempotency-Key replays; a different second answer gets 409 `already_answered`.
+  - Concurrent answers produce exactly one `human_inputs` row (unique constraint) and one applied effect (database trigger).
+- **Attribution.** Who and when are recorded as `human_inputs.submitted_by`/`submitted_at`, `investigation_events.actor_user_id` and the audit event `hitl.answered`.
+- **Row-level security.** The new tables `human_inputs` and `investigation_versions` have RLS and column-level grants, and are covered by the cross-tenant and database-control tests.
+
+### Files created / changed
+
+- **Migration `0005_human_in_the_loop`** (reversible downgrade):
+  - new statuses, kinds and triggers;
+  - `inputs_hash`, `interpretation` and `conflicts` columns on evaluations;
+  - new clarification columns, grants and the forward-only trigger;
+  - the new `human_inputs` and `investigation_versions` tables.
+- **Backend:** models, tools (`margin_bridge`), critic, catalog 1.1.0, verification v2, store, output, the new `replay.py`, graph 2.0.0, service, router (answer, versions, compare) and permissions. A new prompt `synthesize_findings.v2.md`, plus regenerated `openapi.json` and `schema.d.ts`.
+- **Frontend:**
+  - the investigation workspace page and the start-investigation button;
+  - question form, version diff and segment components;
+  - types, fetchers, `postJson` with idempotency and format labels.
+- **Tests:**
+  - New: `tests/investigation/test_hitl.py` (17 tests), `tests/unit/test_hitl_units.py` (23 tests), a second SIGKILL test (killed during `apply_answer`), `apps/web/tests/investigation.test.tsx` and `apps/web/e2e/investigation.spec.ts`.
+  - Extended for the new tables, statuses and pause: the security, migration, unit, support, fake-LLM and performance tests.
+- **Docs:** AMD-15 in the master plan; DATA_CONTRACTS §13 and notes in §6.3, §7.7, §8 and §12; notes in ARCHITECTURE, SECURITY_MODEL and TEST_STRATEGY. The README covers Phase 6 and corrects the Alembic command to `uv run --env-file .env alembic …`.
+
+### Required scenarios and their tests
+
+| Requirement | Test(s) |
+|---|---|
+| Genuine pause, one question | `test_investigation_pauses_durably_at_one_question` |
+| Valid resume; clearance-campaign scenario | `test_planned_campaign_revises_interpretation_and_investigates_alternatives`: the discount impact is preserved, the interpretation becomes "deliberate business decision", the root cause is no longer the discount, and `H_RETURNS_QUALITY` and `H_COST_PRICE` are investigated with `margin_bridge` evidence |
+| Different answers give different outcomes | `test_different_answers_produce_different_investigative_outcomes` |
+| Resume after server restart | `test_answer_and_resume_survive_server_restarts`; plus a real SIGKILL during `apply_answer` with recovery in a fresh process (`test_process_restart.py`) |
+| Duplicate resume | `test_duplicate_submissions_are_safe` |
+| Incorrect checkpoint | `test_stale_or_incorrect_checkpoint_is_rejected` |
+| Unauthorized responder; other business | `test_only_authorized_members_can_answer`, plus the authorization matrix |
+| Validation failure | `test_invalid_answers_are_rejected_without_effect` |
+| Human disagreement; contradictory input | `test_contradictory_answer_is_recorded_as_a_conflict_not_applied` |
+| Empty or irrelevant feedback | `test_unsure_and_irrelevant_answers_change_no_verdict` |
+| Maximum cycles | `test_clarifications_are_capped` |
+| Preserved calculations; version comparison | `test_replay_comparison_is_a_pure_read`, `test_tampered_measurement_shows_in_the_comparison` |
+| Concurrent responses | `test_concurrent_answers_have_exactly_one_effect` |
+| Attribution | `test_answers_are_attributed_and_audited` |
+| Text is not an instruction or authorization | `test_human_text_is_never_an_instruction_or_authorization` |
+| Old checkpoint format | `test_investigation_from_an_older_graph_is_not_resumed` |
+
+Nothing in the scenario is hardcoded. The tests use the seeded generator (discount scenario, seed 7) and real uploads, and the outcomes come from the catalog option effects and the verification rules.
+
+### Tests executed and actual results
+
+Environment: local Docker PostgreSQL 18 (`root-postgres-1`) with disposable per-test databases; runtime role `root_app`, migrations run as the owner. Python 3.14.6 (uv 0.12.7), Node 24.15.0. Backend commands ran from `services/api` with `uv run --locked --env-file .env`.
+
+| Check | Actual result |
+|---|---|
+| First full backend run after implementation | 592 passed, **7 failed**, 1 skipped, 5 perf deselected, 914 s. All 7 were Phase 5 tests that assumed an immediate `completed` status (see "Errors"); they were adapted, and the 3 affected files were rerun: 35 passed |
+| Final `pytest --cov --cov-fail-under=85` | **600 passed**, 1 opt-in live-model test skipped, 5 perf deselected, 975 s; total coverage **96.25%** |
+| Per-module coverage gates (`--fail-under=95`) | auth + tenancy 98%, analytics 96%, `verification.py` 97%, `critic.py` 98%; all passed. No threshold lowered |
+| New HITL tests | 17 integration tests in `test_hitl.py` and 23 unit tests; included in the 600 above |
+| `pytest tests/perf -m perf -s` | First run: 1 failed, because the benchmark used a return-spike dataset that never pauses (no question to time). It now uses the discount scenario, which does pause. Rerun: **5 passed**, 145 s |
+| Ruff, format, strict mypy | All passed |
+| `npm run lint`, `tsc --noEmit`, `npm run test:coverage` | Passed. 43 frontend tests; statements 97.69%, branches 86.91% |
+| `npx playwright test` (demo account credentials) | **8 passed**, 35.5 s, including the new e2e test that answers "planned campaign" in the browser and checks the replay |
+| OpenAPI export and `npm run api:types` | Regenerated output is byte-identical (`cmp`) to the committed files: no drift |
+| `pip-audit` | No known vulnerabilities |
+| `npm audit --omit=dev --audit-level=high`; `npm run audit:gate` | 0 vulnerabilities; gate passed (documented exceptions only) |
+| gitleaks 8.30.1 (Docker image) | Full history: 7 commits, no leaks. The 49 files to be committed (Phase 6 changes, excluding `apps/web/AGENTS.md`), scanned as a directory: no leaks. `.env`, `services/api/.env` and `apps/web/.env.local` confirmed git-ignored |
+| Live-model integration | **Not run**: no `ANTHROPIC_API_KEY` |
+
+Performance (local, measured while no other test suite ran; no CI, production or load claim):
+
+| Operation (discount scenario, seed 7) | Measurement |
+|---|---|
+| Start to first clarification, deterministic (NFR-08 ≤ 60 s) | 2.330 s; 5 incidents, 17 evidence links, 30 events |
+| Answer to next stable point | 0.799 s |
+| Same revision with cached evidence and the scripted model, to first question | 2.415 s; 10 model calls; identical analytical signature at version 1 |
+| Questions until completed (all answered "Not sure") | 3 |
+| Analytics, about 20k / 100k lines | 1.793 / 7.031 s, 25 SQL statements each |
+| Ingestion, 20,271 / 101,107 lines | 4.65 / 19.33 s total |
+
+### Errors encountered and fixes applied
+
+- **CT-5 trigger rejected by the database.** The CT-5 trigger violated the existing clarification-trigger CHECK constraint (IntegrityError); migration 0005 now alters that constraint.
+- **Lint and type errors.**
+  - mypy found a shadowed variable and a missing import.
+  - Ruff found long lines and the PT018/SIM117 rules. PT018 was fixed with Ruff's unsafe fix, restricted to the two new test files.
+  - SQLAlchemy raised a deprecation warning for `.tuples()`, which was replaced.
+  - All fixed, with no gate lowered.
+- **Missing conflict caveat.** The root-cause hypothesis lacked the conflict caveat. Conflicts are now a deterministic rendered section, also included in snapshots and in compare.
+- **Wrong test design.** A new conflict test expected one affected incident, but the answer correctly applies to both incidents on the same slice. The new test was corrected; the behaviour was right.
+- **Stale recommendation.** "Answer the open question" stayed among the recommendations after completion; it now appears only while a question is open.
+- **Migration test.** The test's table list was missing the new tables; updated.
+- **Playwright.**
+  - The installed Chromium build didn't match the Playwright version, so every browser test failed until `npx playwright install chromium` was run.
+  - The new e2e test compared `innerText` (with line breaks) against `textContent` (without). It now compares `innerText` on both sides and still requires an exact match.
+- **Phase 5 tests that assumed every run completes immediately** (7 failures in the first full run). With context-gated pauses, these tests now answer any open question "Not sure" (which adds no context) and then make their original assertions unchanged.
+  - The prompt-version test now expects `synthesize_findings.v2`, the deliberate prompt change in this phase.
+  - The resilience test now targets the renamed node `draft_findings`.
+  - The phrasing test finishes each run with its own scripted model, so the four-different-wordings, identical-facts assertion still holds.
+- **Database password in local output.** A failing pytest run printed the local test database URL, including its password, to the local terminal only. It wasn't committed or pushed; the gitleaks scans below confirm this.
+- **Odd paths in pytest output.** Pytest's `--tb=line` output showed file paths under `/Users/apple/Desktop/ROOT`, a different checkout location. The failures reproduced in this repository, so this is a path-reporting artifact, not a second working copy.
+
+### Known limitations and remaining risks
+
+- **Free text.**
+  - Free text is never interpreted. A business that only types free text gets its context recorded and shown, but no verdict changes; structured options carry the effect.
+  - This is deliberate (untrusted input). Semantic extraction from free text would need its own reviewed design.
+- **Limits are fixed.** The clarification limits (6 per investigation, 3 per incident) are constants, not settings per business.
+- **Live LLM not exercised.** No `ANTHROPIC_API_KEY`, so the synthesis v2 prompt is exercised only with the scripted model.
+- **Deferred work.**
+  - Corrections and overlays, hypothesis rejection, findings review, skip and re-verify are Phase 7 scope.
+  - Waiting investigations don't expire yet: no timeout and no reminder.
+- **Unverified at scale.** Accessibility scans, CI-hardware performance and a 20-user load test remain unverified.
+
+### Acceptance criteria status
+
+Every Phase 6 objective listed above is implemented and covered by the tests in the scenario table. The local gates are recorded under "Tests executed and actual results" above. Remote CI for the Phase 6 commit is not claimed until it is observed.
+
+### Commit hash and GitHub push status
+
+- The commit hash and the push verification are appended below, after the commit.
+- Before the Phase 6 commit, `git ls-remote origin refs/heads/main` returned ``eb780df44d684cf6c3b63d00b8bcf7202884f5f4`, matching local `HEAD``.
+
+### Next-phase dependencies
+
+- Do not begin Phase 7 in this session.
+- Phase 7 builds corrections and overlays, hypothesis rejection, findings review and re-verify on top of these pieces: `human_inputs`, the forward-only clarification states, the evaluation history keyed by `inputs_hash`, and `investigation_versions` with compare.

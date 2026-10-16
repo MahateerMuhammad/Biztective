@@ -102,6 +102,8 @@ Every tenant-scoped table has `business_id NOT NULL` and an RLS policy `business
 
 ### 4.4 Investigation lifecycle
 
+> **Amended by AMD-15 (Phase 6):** implemented statuses are `queued`, `running`, `awaiting_human` (clarification only), `completed`, `completed_no_incidents`, `insufficient_data` and `failed`; `cancelled` and the other interrupt kinds are not yet implemented.
+
 ```
 created ─► queued ─► running ─┬─► awaiting_human ─(answer)─► queued ─► running ─┐
                               │      (clarification | findings_review |        │
@@ -253,6 +255,8 @@ Limits: ≤ 6 LLM-requested tool calls per hypothesis and ≤ 40 evidence items 
 
 ### 6.4 Verification and confidence (deterministic)
 
+> **Amended by AMD-15 (Phase 6):** human answers are evaluated as specified here, with human-only templates following the answer, data refutation always winning, contradictions recorded as `conflicts`, and an `intended` interpretation that keeps a supported mechanism out of the root-cause candidate.
+
 > **Amended by AMD-12 (Phase 5):** a data criterion without evidence is *unknown*, and a hypothesis with an unknown data criterion is `inconclusive` rather than refuted by low confidence.
 
 Each template defines criteria `C_i` with weight `w_i`, a polarity (`support` or `refute`) and an evaluation function over evidence (and over human context for criteria marked `source=human`). Example for `H_RETURNS_QUALITY`:
@@ -287,6 +291,8 @@ Root-cause candidate = the highest-confidence `supported` hypothesis not rejecte
 ## 7. Human-in-the-loop (FR-11 to FR-15)
 
 ### 7.1 Interrupt types
+
+> **Amended by AMD-15 (Phase 6):** the `clarification` interrupt is implemented (DATA_CONTRACTS §13): one question at a time, answer options carry catalog effects (confirm, deny, intended, unsure), free text is stored but never parsed, and trigger **CT-5 (intent)** is added to §7.2. `findings_review`, `plan_constraints` and `action_decisions` remain later work.
 
 | Interrupt | Created by | Who may answer | Answer effect |
 |---|---|---|---|
@@ -331,6 +337,8 @@ Rejection requires a reason (≤ 1000 chars). It sets `rejected_by_human` (store
 Accept → planning. Challenge needs a reason and either a selected alternative hypothesis or new context. The graph returns to `generate_hypotheses` for the incident with the challenge as human context. At most 2 challenges per investigation. After that, findings are finalised as "disputed", with both views recorded.
 
 ### 7.7 Persistence and resume strategy (every checkpoint)
+
+> **Amended by AMD-15 (Phase 6):** for `clarification` the stored row moves `open → awaiting → answered → applied`; the answer must quote the paused `checkpoint_id`; the resume job is `run_investigation` with dedupe key `run_investigation:<id>:resume:<clarification_id>`, and the worker resumes only while the latest checkpoint equals the stored one.
 
 | Checkpoint | Persisted before pausing | Resume trigger | Exactly-once guard | Crash between answer and resume |
 |---|---|---|---|---|
@@ -382,6 +390,8 @@ The LLM receives aggregates and evidence results only: no raw rows, no customer 
 `project(events[0..n]) -> InvestigationView` is a pure reducer in `investigation/events.py`. It is used both for live state (`GET /investigations/{id}` = projection at the latest seq, plus current statuses) and for replay (`?at_seq=n`). Using one reducer guarantees replay fidelity (T-29). Events carry the data needed to project (IDs, statuses, confidences, rendered-claim references), and large results are referenced by evidence ID.
 
 ### 9.3 Human-influence view
+
+> **Amended by AMD-15 (Phase 6):** implemented as stored interpretation versions (one per answer) and a pure snapshot diff (`GET …/versions/compare`), showing changed findings, hypotheses, root causes and recommendations and whether every earlier measurement is preserved. Event-sequence projection remains Phase 7.
 
 For each human event `h`, the UI shows `project(seq_h − 1)` against `project(next stable seq after h's effects)`. Stable seq means the next `awaiting_human` or terminal event. The view highlights changed hypothesis statuses and confidences, new revisions and impact deltas, plan changes, and the causal chain (`caused_by_event_id`).
 
@@ -530,6 +540,8 @@ class InvestigationState(TypedDict):
 The state holds **IDs and small statuses only**. Domain tables are the source of truth. Nodes read the details they need.
 
 ### 12.2 Graph and transitions
+
+> **Amended by AMD-15 (Phase 6):** graph 2.0.0: `initialize → (select_incident → generate_hypotheses → select_tools → retrieve_evidence → verify_evidence)* → draft_findings → assess_context → await_clarification [interrupt] → apply_answer → (affected incidents again) → draft_findings → … → finalize`.
 
 > **Amended by AMD-12 (Phase 5):** the Phase 5 graph has no interrupts: `initialize → select_incident → generate_hypotheses → select_tools → retrieve_evidence → verify_evidence → detect_missing_context → … → synthesize_output → finalize`.
 

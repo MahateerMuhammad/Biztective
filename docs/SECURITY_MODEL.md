@@ -116,6 +116,8 @@
 
 ### 5.2 Enforcement
 
+> **Amended by AMD-15 (implemented in Phase 6):** `hitl:answer` exists, granted to owner and analyst. Answers additionally require a clarification of that investigation in the caller's business and the paused `checkpoint_id`; free text is untrusted data (stored, attributed, shown as plain text, never parsed, never rendered through placeholders, never sent to the LLM) and is never an authorization.
+
 - Each FastAPI route declares `Depends(require_permission("…"))`. A startup check and test T-16 fail if any `/api/v1/businesses/**` route lacks one.
 - The resource → business check is `SELECT … WHERE id = :id AND business_id = :bid`. A miss returns 404.
 - The LLM and the graph run with the investigating business's tenant context and **no user permissions**. They cannot call approval or execution code. That code lives in `recovery/approvals.py` and `jobs` handlers, which are reachable only from authenticated API routes and the executor.

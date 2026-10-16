@@ -230,6 +230,21 @@ def test_every_template_reaches_its_statuses() -> None:
     record("H_DATA_QUALITY", {"quality": None, "exposure": None})
     record("H_EXTERNAL_CONTEXT", {})
 
+    def margin(price_cost: str | None, share: str | None) -> dict[str, Evidence | None]:
+        return {
+            "margin": ev(
+                **{
+                    "effect.price_cost": (price_cost, "pp"),
+                    "adverse.price_cost_share": (share, "ratio"),
+                }
+            )
+        }
+
+    record("H_COST_PRICE", margin("-0.05", "0.8"))  # supported
+    record("H_COST_PRICE", margin("-0.03", "0.2"))  # C1 only (0.6): ask a human
+    record("H_COST_PRICE", margin("0.0", "0.0"))  # refuted: price and cost barely moved
+    record("H_COST_PRICE", margin(None, None))  # inconclusive: costs incomplete
+
     full = {"supported", "refuted", "inconclusive", "needs_human_context"}
     for name, statuses in reached.items():
         expected = {
@@ -323,6 +338,7 @@ def test_every_tool_is_registered_read_only() -> None:
         "customer_exposure",
         "evidence_lookup",
         "data_quality_check",
+        "margin_bridge",
     }
     for spec in TOOLS.values():
         fields = set(spec.params.model_fields)

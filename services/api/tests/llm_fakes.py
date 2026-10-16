@@ -140,7 +140,7 @@ class CooperativeModel:
                     refs = sorted({r for c in h["criteria"] for r in c["evidence_refs"]})[:6]
                     cited = evidence[refs[0]] if refs else incident["evidence"][0]
                     text = f"{support} {placeholder(cited, ('cohort.current_rate',))}."
-                    if h["status"] == "supported":
+                    if h["status"] == "supported" and h.get("interpretation") != "intended":
                         causes.append(
                             {
                                 "hypothesis_id": h["id"],

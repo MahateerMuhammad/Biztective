@@ -70,6 +70,7 @@ async def emit(
     payload: dict[str, Any],
     dedupe_key: str,
     actor_kind: str = "system",
+    actor_user_id: UUID | None = None,
 ) -> int | None:
     """Append an event exactly once per dedupe key; returns its seq (None if it existed)."""
     seq: int | None = await session.scalar(
@@ -81,9 +82,9 @@ async def emit(
                         AND dedupe_key = :k)
                 RETURNING last_seq
             )
-            INSERT INTO investigation_events
-                (business_id, investigation_id, seq, type, actor_kind, payload, dedupe_key)
-            SELECT :b, :i, last_seq, :t, :a, CAST(:p AS jsonb), :k FROM next
+            INSERT INTO investigation_events (business_id, investigation_id, seq, type,
+                actor_kind, actor_user_id, payload, dedupe_key)
+            SELECT :b, :i, last_seq, :t, :a, :u, CAST(:p AS jsonb), :k FROM next
             RETURNING seq
         """),
         {
@@ -91,6 +92,7 @@ async def emit(
             "b": business_id,
             "t": event_type,
             "a": actor_kind,
+            "u": actor_user_id,
             "p": canonical_json(payload),
             "k": dedupe_key,
         },
@@ -207,6 +209,42 @@ async def store_tool_evidence(
     stored = await cached_evidence(session, scope.revision_id, kind, params_hash)
     if stored is None:  # pragma: no cover - the row was inserted or existed a moment ago
         raise RuntimeError("tool evidence vanished")
+    return stored
+
+
+HUMAN_QUERY_VERSION = "human.v1"
+
+
+async def store_human_evidence(
+    session: AsyncSession, incident: Incident, human_input_id: UUID, result: dict[str, Any]
+) -> UUID:
+    """A person's answer as `human_context` evidence of one incident (insert-only, hashed).
+    Keyed by the human input and incident, so a re-applied answer stores nothing twice."""
+    params = {"human_input_id": str(human_input_id), "incident_id": str(incident.id)}
+    params_hash = sha256_of({"tool": "human_context", **params})
+    payload = jsonable(result)
+    await session.execute(
+        pg_insert(EvidenceItem)
+        .values(
+            id=uuid.uuid7(),
+            business_id=incident.business_id,
+            revision_id=incident.revision_id,
+            incident_id=incident.id,
+            kind="human_context",
+            params=params,
+            result=payload,
+            result_hash=sha256_of(payload),
+            params_hash=params_hash,
+            query_version=HUMAN_QUERY_VERSION,
+        )
+        .on_conflict_do_nothing(
+            index_elements=["revision_id", "kind", "params_hash"],
+            index_where=text("params_hash IS NOT NULL"),
+        )
+    )
+    stored = await cached_evidence(session, incident.revision_id, "human_context", params_hash)
+    if stored is None:  # pragma: no cover - the row was inserted or existed a moment ago
+        raise RuntimeError("human evidence vanished")
     return stored
 
 

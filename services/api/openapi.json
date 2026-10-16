@@ -60,6 +60,47 @@
         "title": "AnalyticsResponse",
         "type": "object"
       },
+      "AnswerClarification": {
+        "additionalProperties": false,
+        "description": "A structured option, free text, or both. Free text is stored as untrusted data.",
+        "properties": {
+          "checkpoint_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Checkpoint Id",
+            "type": "string"
+          },
+          "free_text": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Free Text"
+          },
+          "option_id": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z_]{1,40}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Option Id"
+          }
+        },
+        "required": [
+          "checkpoint_id"
+        ],
+        "title": "AnswerClarification",
+        "type": "object"
+      },
       "AuditEntryOut": {
         "properties": {
           "action": {
@@ -2792,6 +2833,151 @@
         ]
       }
     },
+    "/api/v1/businesses/{business_id}/investigations/{investigation_id}/clarifications": {
+      "get": {
+        "operationId": "list_clarifications_api_v1_businesses__business_id__investigations__investigation_id__clarifications_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "investigation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Investigation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "business_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Business Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Clarifications Api V1 Businesses  Business Id  Investigations  Investigation Id  Clarifications Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Clarifications",
+        "tags": [
+          "investigations"
+        ]
+      }
+    },
+    "/api/v1/businesses/{business_id}/investigations/{investigation_id}/clarifications/{clarification_id}/answer": {
+      "post": {
+        "operationId": "answer_clarification_api_v1_businesses__business_id__investigations__investigation_id__clarifications__clarification_id__answer_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "investigation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Investigation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "clarification_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Clarification Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "business_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Business Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "minLength": 8,
+                  "pattern": "^[A-Za-z0-9_-]+$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnswerClarification"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Answer Clarification",
+        "tags": [
+          "investigations"
+        ]
+      }
+    },
     "/api/v1/businesses/{business_id}/investigations/{investigation_id}/events": {
       "get": {
         "operationId": "list_events_api_v1_businesses__business_id__investigations__investigation_id__events_get",
@@ -2916,6 +3102,213 @@
           }
         },
         "summary": "Retry Investigation",
+        "tags": [
+          "investigations"
+        ]
+      }
+    },
+    "/api/v1/businesses/{business_id}/investigations/{investigation_id}/versions": {
+      "get": {
+        "operationId": "list_versions_api_v1_businesses__business_id__investigations__investigation_id__versions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "investigation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Investigation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "business_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Business Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Versions Api V1 Businesses  Business Id  Investigations  Investigation Id  Versions Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Versions",
+        "tags": [
+          "investigations"
+        ]
+      }
+    },
+    "/api/v1/businesses/{business_id}/investigations/{investigation_id}/versions/compare": {
+      "get": {
+        "description": "A pure diff of two stored snapshots: no LLM call and no analytics query (AMD-15).",
+        "operationId": "compare_versions_api_v1_businesses__business_id__investigations__investigation_id__versions_compare_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "investigation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Investigation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "business_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Business Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from_version",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "From Version",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to_version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 100,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Compare Versions Api V1 Businesses  Business Id  Investigations  Investigation Id  Versions Compare Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compare Versions",
+        "tags": [
+          "investigations"
+        ]
+      }
+    },
+    "/api/v1/businesses/{business_id}/investigations/{investigation_id}/versions/{version}": {
+      "get": {
+        "operationId": "get_version_api_v1_businesses__business_id__investigations__investigation_id__versions__version__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "investigation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Investigation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Version",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "business_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Business Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Version Api V1 Businesses  Business Id  Investigations  Investigation Id  Versions  Version  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Version",
         "tags": [
           "investigations"
         ]

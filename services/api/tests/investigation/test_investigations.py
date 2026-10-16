@@ -14,6 +14,7 @@ from tests.investigation.support import (
     detail,
     events,
     files_of,
+    finish,
     ingest,
     investigate,
     options,
@@ -79,6 +80,8 @@ async def test_planted_return_spike_is_explained_by_evidence(
     files, manifest = files_of(options(seed, "return_spike"))
     dataset_id = await ingest(app, client, owner.business_id, files)
     body = await investigate(app, client, owner.business_id, dataset_id)
+    # Missing context pauses the run; "Not sure" adds none, so the data verdicts must stand.
+    body = await finish(app, client, owner.business_id, body)
 
     assert body["status"] == "completed", body["error_code"]
     assert body["llm_mode"] == "deterministic"
@@ -115,6 +118,7 @@ async def test_planted_discount_spike_is_explained_by_evidence(
     files, manifest = files_of(options(7, "discount_spike"))
     dataset_id = await ingest(app, client, owner.business_id, files)
     body = await investigate(app, client, owner.business_id, dataset_id)
+    body = await finish(app, client, owner.business_id, body)
     assert body["status"] == "completed"
     incident = planted(body, manifest, "discount_rate")
     statuses = {h["template"]: h["status"] for h in incident["hypotheses"]}
@@ -198,7 +202,7 @@ async def test_llm_mode_selects_extra_tools_and_cites_only_valid_evidence(
     assert {r.prompt_version for r in rows} == {
         "prioritize_hypotheses.v1",
         "select_tools.v1",
-        "synthesize_findings.v1",
+        "synthesize_findings.v2",  # AMD-15: synthesis receives human-context codes
     }
 
 
@@ -207,14 +211,28 @@ async def test_analytical_facts_do_not_depend_on_llm_phrasing(
 ) -> None:
     files, _ = files_of(options(8, "return_spike"))
     dataset_id = await ingest(app, client, owner.business_id, files)
-    runs = [await investigate(app, client, owner.business_id, dataset_id)]
+    runs = [
+        await finish(
+            app,
+            client,
+            owner.business_id,
+            await investigate(app, client, owner.business_id, dataset_id),
+        )
+    ]
     for style in (0, 1, 2):
         provider = ScriptedProvider(CooperativeModel(style))
-        runs.append(await investigate(app, client, owner.business_id, dataset_id, provider))
+        body = await investigate(app, client, owner.business_id, dataset_id, provider)
+        app.state.investigations.provider = provider  # the same model words the final findings
+        try:
+            runs.append(await finish(app, client, owner.business_id, body))
+        finally:
+            app.state.investigations.provider = None
     baseline = signature(runs[0])
     assert baseline
-    for body in runs[1:]:
+    for body in runs:
         assert body["status"] == "completed"
+    for body in runs[1:]:
+        assert signature(body) == baseline
         assert signature(body) == baseline
     summaries = {
         "".join(s.get("text", "") for s in body["findings"]["rendered"]["summary"]) for body in runs

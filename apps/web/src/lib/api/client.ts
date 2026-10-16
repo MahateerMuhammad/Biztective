@@ -62,8 +62,13 @@ async function post<T>(
   return (await response.json()) as T;
 }
 
-export async function postJson<T>(path: string, body?: unknown): Promise<T | null> {
-  return post<T>(path, body === undefined ? undefined : { json: body });
+/** JSON POST. Pass the same idempotency key when retrying the same submission. */
+export async function postJson<T>(path: string, body?: unknown, idempotencyKey?: string): Promise<T | null> {
+  return post<T>(
+    path,
+    body === undefined ? undefined : { json: body },
+    idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {},
+  );
 }
 
 /**
