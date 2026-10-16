@@ -988,3 +988,12 @@ Phase 5 implementation and all local completion gates are **met**, under AMD-12/
 
 - Do not begin Phase 6 in this session.
 - A later user-authorized Phase 6 implements the human-in-the-loop scope (baseline Phase 8) against persisted context requests, evaluations and graph checkpoints. It must preserve earlier evidence and establish answer/resume durability; no answer endpoints are stubbed here.
+
+### Post-commit verification record
+
+- **Implementation commit:** `322c3fa329e875bcea58a5568f0cc32b5e28e875` — `feat: Phase 5 stateful evidence-backed investigation engine`. Uses the repository owner's configured Git identity; no AI co-author or generated-by trailers.
+- **Push:** `git push origin main` succeeded, advancing `6b14c2a..322c3fa` without force.
+- **Verification:** `git ls-remote origin refs/heads/main` and `git rev-parse HEAD` both returned `322c3fa329e875bcea58a5568f0cc32b5e28e875`. Working tree was clean after the implementation commit.
+- **CI:** GitHub Actions results remain **unobserved** in this session. Local checks and remote hash verification are not presented as CI success.
+- **Cleanup:** stopped only the isolated temporary PostgreSQL cluster created for this audit. No existing database service was stopped or modified.
+- This verification record is appended in a documentation-only follow-up commit; earlier log entries and test evidence are unchanged. Application tests are **not rerun for this bookkeeping-only addition** because no application, migration, dependency, generated contract or test code changes.
