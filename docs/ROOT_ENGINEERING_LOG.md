@@ -1212,3 +1212,11 @@ Every Phase 6 objective listed above is implemented and covered by the tests in 
 
 - Do not begin Phase 7 in this session.
 - Phase 7 builds corrections and overlays, hypothesis rejection, findings review and re-verify on top of these pieces: `human_inputs`, the forward-only clarification states, the evaluation history keyed by `inputs_hash`, and `investigation_versions` with compare.
+
+### Post-commit verification record
+
+- **Implementation commit:** `5057ef450469d5729cc4455d35f4fc233a115546`, titled `feat: Phase 6 human-in-the-loop clarifications, versions and replay`. It uses the repository owner's configured Git identity, with no AI co-author or generated-by trailers. The staged content was scanned with gitleaks before committing: no leaks.
+- **Push:** `git push origin main` succeeded without force, advancing `eb780df..5057ef4`.
+- **Verification:** `git ls-remote origin refs/heads/main` and `git rev-parse HEAD` both returned `5057ef450469d5729cc4455d35f4fc233a115546`. Only the untracked, non-project `apps/web/AGENTS.md` remained after the commit.
+- **CI:** GitHub Actions results for this commit were not observed at the time of writing and are not claimed.
+- This record is appended in a documentation-only follow-up commit; earlier log entries are unchanged. Application tests were **not rerun** for this bookkeeping-only addition, because no code changed.
