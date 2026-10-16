@@ -66,7 +66,7 @@ async def _ingest(
     if traced:
         tracemalloc.start()
     started = time.perf_counter()
-    assert await run_jobs(app) == 1
+    assert await run_jobs(app, limit=1) == 1  # ingestion only (it queues the analysis)
     job_seconds = time.perf_counter() - started
     traced_peak = tracemalloc.get_traced_memory()[1] if traced else 0
     if traced:

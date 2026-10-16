@@ -19,7 +19,7 @@ from sqlalchemy import (
     Text,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, DATERANGE, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -206,7 +206,7 @@ class Product(Base):
     product_id: Mapped[str] = mapped_column(Text, primary_key=True)
     product_name: Mapped[str] = mapped_column(Text)
     category: Mapped[str] = mapped_column(Text)
-    unit_cost: Mapped[Decimal] = mapped_column(Numeric(18, 4))
+    unit_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))
     list_price: Mapped[Decimal] = mapped_column(Numeric(18, 4))
     source_row: Mapped[int] = mapped_column(Integer)
 
@@ -239,6 +239,7 @@ class OrderLine(Base):
     discount_amount: Mapped[Decimal] = mapped_column(Numeric(18, 4))
     channel: Mapped[str] = mapped_column(Text)
     region: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)
     source_row: Mapped[int] = mapped_column(Integer)
 
 
@@ -256,3 +257,83 @@ class Return(Base):
     reason_code: Mapped[str] = mapped_column(Text)
     reason_text: Mapped[str | None] = mapped_column(Text)
     source_row: Mapped[int] = mapped_column(Integer)
+
+
+# ---- Analytics (AMD-10) ----
+
+
+class AnalysisRevision(Base):
+    __tablename__ = "analysis_revisions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid7)
+    business_id: Mapped[uuid.UUID] = mapped_column()
+    dataset_id: Mapped[uuid.UUID] = mapped_column()
+    config_version: Mapped[int] = mapped_column(Integer)
+    code_version: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)
+    as_of_date: Mapped[date | None] = mapped_column(Date)
+    current_window: Mapped[Any] = mapped_column(DATERANGE)
+    baseline_window: Mapped[Any] = mapped_column(DATERANGE)
+    restrictions: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    summary: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    metrics_hash: Mapped[str | None] = mapped_column(Text)
+    segments_hash: Mapped[str | None] = mapped_column(Text)
+    incidents_hash: Mapped[str | None] = mapped_column(Text)
+    revision_hash: Mapped[str | None] = mapped_column(Text)
+    error_code: Mapped[str | None] = mapped_column(Text)
+    requested_by: Mapped[uuid.UUID | None] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class CustomerSegment(Base):
+    __tablename__ = "customer_segments"
+
+    business_id: Mapped[uuid.UUID] = mapped_column()
+    revision_id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    customer_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    segment: Mapped[str] = mapped_column(Text)
+    r_score: Mapped[int] = mapped_column(SmallInteger)
+    f_score: Mapped[int] = mapped_column(SmallInteger)
+    m_score: Mapped[int] = mapped_column(SmallInteger)
+    first_order_date: Mapped[date] = mapped_column(Date)
+    last_order_date: Mapped[date] = mapped_column(Date)
+    recency_days: Mapped[int] = mapped_column(Integer)
+    lifetime_orders: Mapped[int] = mapped_column(Integer)
+    frequency_365: Mapped[int] = mapped_column(Integer)
+    monetary_365: Mapped[Decimal] = mapped_column(Numeric(20, 4))
+    median_gap_days: Mapped[Decimal | None] = mapped_column(Numeric(10, 1))
+    flags: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list)
+
+
+class Incident(Base):
+    __tablename__ = "incidents"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid7)
+    business_id: Mapped[uuid.UUID] = mapped_column()
+    revision_id: Mapped[uuid.UUID] = mapped_column()
+    key: Mapped[str] = mapped_column(Text)
+    metric: Mapped[str] = mapped_column(Text)
+    dimension: Mapped[str] = mapped_column(Text)
+    dimension_value: Mapped[str | None] = mapped_column(Text)
+    rank: Mapped[int] = mapped_column(SmallInteger)
+    status: Mapped[str] = mapped_column(Text)
+    severity: Mapped[str] = mapped_column(Text)
+    impact: Mapped[Decimal] = mapped_column(Numeric(20, 4))
+    stats: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    affected: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    context: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+
+
+class EvidenceItem(Base):
+    __tablename__ = "evidence_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid7)
+    business_id: Mapped[uuid.UUID] = mapped_column()
+    revision_id: Mapped[uuid.UUID] = mapped_column()
+    incident_id: Mapped[uuid.UUID] = mapped_column()
+    kind: Mapped[str] = mapped_column(Text)
+    params: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    result: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    result_hash: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

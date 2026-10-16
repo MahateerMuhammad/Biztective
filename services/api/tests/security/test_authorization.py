@@ -113,6 +113,7 @@ def _url(path: str, business_id: uuid.UUID, dataset_id: uuid.UUID) -> str:
         path.replace("{business_id}", str(business_id))
         .replace("{dataset_id}", str(dataset_id))
         .replace("{kind}", "orders")
+        .replace("{incident_id}", str(uuid.UUID(int=1)))
     )
 
 
@@ -142,10 +143,15 @@ async def test_role_permission_matrix(
         response = await _call(client, method, _url(path, world.business_id, world.dataset_id))
         label = f"{role} {method} {path}"
         if permission in ROLE_PERMISSIONS[role]:
+            # Authorised: may still fail validation, find nothing (random incident id) or wait
+            # for work in progress (409), but never fail authorisation or with a 5xx.
+            assert response.status_code not in {401, 403}, label
+            assert response.status_code < 500, label
             if method == "GET":
-                assert response.status_code == 200, label
-            else:  # authorised: may still fail validation, never authz
-                assert response.status_code in {200, 202, 409, 415, 422}, label
+                # 404: a random incident id, or no analysis ever requested for the dataset.
+                not_found_ok = "{incident_id}" in path or path.endswith("/analysis")
+                allowed = {200, 404, 409} if not_found_ok else {200, 409}
+                assert response.status_code in allowed, label
         else:
             assert response.status_code == 403, label
             assert response.json()["code"] == "forbidden"

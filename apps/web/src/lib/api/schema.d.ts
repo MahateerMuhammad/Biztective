@@ -145,6 +145,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/businesses/{business_id}/datasets/{dataset_id}/analysis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Analysis */
+        get: operations["get_analysis_api_v1_businesses__business_id__datasets__dataset_id__analysis_get"];
+        put?: never;
+        /** Run Analysis */
+        post: operations["run_analysis_api_v1_businesses__business_id__datasets__dataset_id__analysis_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/businesses/{business_id}/datasets/{dataset_id}/customers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Customers */
+        get: operations["list_customers_api_v1_businesses__business_id__datasets__dataset_id__customers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/businesses/{business_id}/datasets/{dataset_id}/export/{kind}": {
         parameters: {
             query?: never;
@@ -157,6 +192,23 @@ export interface paths {
          * @description CSV with spreadsheet-formula escaping (SEC-16), built into a bounded temp file.
          */
         get: operations["export_csv_api_v1_businesses__business_id__datasets__dataset_id__export__kind__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/businesses/{business_id}/datasets/{dataset_id}/incidents/{incident_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Incident */
+        get: operations["get_incident_api_v1_businesses__business_id__datasets__dataset_id__incidents__incident_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -199,6 +251,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/businesses/{business_id}/datasets/{dataset_id}/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Metrics */
+        get: operations["get_metrics_api_v1_businesses__business_id__datasets__dataset_id__metrics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/businesses/{business_id}/datasets/{dataset_id}/metrics/comparison": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compare Periods
+         * @description Current period vs the immediately preceding period of equal length (AMD-10).
+         */
+        get: operations["compare_periods_api_v1_businesses__business_id__datasets__dataset_id__metrics_comparison_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/businesses/{business_id}/datasets/{dataset_id}/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Product Performance
+         * @description Per-product sales, margin and return rates (M15, M16 period view; M21 matured cohort).
+         */
+        get: operations["product_performance_api_v1_businesses__business_id__datasets__dataset_id__products_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/businesses/{business_id}/datasets/{dataset_id}/records/{kind}": {
         parameters: {
             query?: never;
@@ -208,6 +317,23 @@ export interface paths {
         };
         /** List Records */
         get: operations["list_records_api_v1_businesses__business_id__datasets__dataset_id__records__kind__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/businesses/{business_id}/datasets/{dataset_id}/segments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Segment Summary */
+        get: operations["segment_summary_api_v1_businesses__business_id__datasets__dataset_id__segments_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -254,6 +380,31 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AnalyticsResponse
+         * @description Common envelope: every number is computed from stored records, never estimated.
+         */
+        AnalyticsResponse: {
+            /** As Of */
+            as_of: string | null;
+            /** Currency */
+            currency: string;
+            /** Data */
+            data: unknown;
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /** Period */
+            period: {
+                [key: string]: unknown;
+            } | null;
+            /** Restrictions */
+            restrictions: {
+                [key: string]: unknown;
+            }[];
+        };
         /** AuditEntryOut */
         AuditEntryOut: {
             /** Action */
@@ -870,6 +1021,110 @@ export interface operations {
             };
         };
     };
+    get_analysis_api_v1_businesses__business_id__datasets__dataset_id__analysis_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_analysis_api_v1_businesses__business_id__datasets__dataset_id__analysis_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_customers_api_v1_businesses__business_id__datasets__dataset_id__customers_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+                segment?: ("loyal" | "at_risk" | "dormant" | "insufficient_history") | null;
+            };
+            header?: never;
+            path: {
+                dataset_id: string;
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     export_csv_api_v1_businesses__business_id__datasets__dataset_id__export__kind__get: {
         parameters: {
             query?: never;
@@ -890,6 +1145,41 @@ export interface operations {
                 };
                 content: {
                     "text/csv": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_incident_api_v1_businesses__business_id__datasets__dataset_id__incidents__incident_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+                incident_id: string;
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -976,6 +1266,115 @@ export interface operations {
             };
         };
     };
+    get_metrics_api_v1_businesses__business_id__datasets__dataset_id__metrics_get: {
+        parameters: {
+            query?: {
+                from?: string | null;
+                to?: string | null;
+                granularity?: "total" | "week";
+                dimension?: "overall" | "category" | "product" | "region" | "channel" | "customer_segment" | "acquisition_channel";
+            };
+            header?: never;
+            path: {
+                dataset_id: string;
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalyticsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    compare_periods_api_v1_businesses__business_id__datasets__dataset_id__metrics_comparison_get: {
+        parameters: {
+            query?: {
+                from?: string | null;
+                to?: string | null;
+                dimension?: "overall" | "category" | "product" | "region" | "channel" | "customer_segment" | "acquisition_channel";
+            };
+            header?: never;
+            path: {
+                dataset_id: string;
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalyticsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    product_performance_api_v1_businesses__business_id__datasets__dataset_id__products_get: {
+        parameters: {
+            query?: {
+                from?: string | null;
+                to?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                dataset_id: string;
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalyticsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_records_api_v1_businesses__business_id__datasets__dataset_id__records__kind__get: {
         parameters: {
             query?: {
@@ -999,6 +1398,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RecordPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    segment_summary_api_v1_businesses__business_id__datasets__dataset_id__segments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalyticsResponse"];
                 };
             };
             /** @description Validation Error */

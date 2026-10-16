@@ -45,6 +45,11 @@ cd services/api
 uv run python -m scripts.generate_dataset --seed 7 --out /tmp/root-demo   # add --noise 0.02 / --pii-column
 ```
 
+After validation, ROOT analyses each ready dataset automatically. Open **View analytics** for:
+- the equal-period comparison, product return rates and customer lifecycle segments
+- deterministic incidents, each with its source-record evidence
+- any data limitations (for example missing costs) that make a figure unavailable
+
 The browser only talks to the Next.js origin. `/api/v1/*` is rewritten to the backend, so session
 cookies stay first-party. The web process connects to PostgreSQL as `root_app`, a role with row-level
 security and no DDL rights; `/api/v1/readyz` reports not-ready if it is pointed at a privileged role.

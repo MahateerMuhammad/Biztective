@@ -85,6 +85,11 @@ class Options:
     start: date
     noise: float
     pii_column: bool
+    scenarios: tuple[str, ...] = ()  # e.g. ("return_spike",)
+    spike_return_rate: float = 0.35  # return probability of planted lines
+
+
+SCENARIOS = frozenset({"return_spike"})
 
 
 def _money(value: float) -> Decimal:
@@ -92,6 +97,14 @@ def _money(value: float) -> Decimal:
 
 
 def generate(options: Options) -> dict[str, bytes]:
+    return generate_with_manifest(options)[0]
+
+
+def generate_with_manifest(options: Options) -> tuple[dict[str, bytes], dict[str, str]]:
+    """Files plus a manifest of what was planted (for tests only; never given to the app)."""
+    unknown = set(options.scenarios) - SCENARIOS
+    if unknown:
+        raise ValueError(f"unknown scenarios: {sorted(unknown)}")
     rng = random.Random(options.seed)
     end = options.start + timedelta(weeks=options.weeks) - timedelta(days=1)
 
@@ -101,6 +114,11 @@ def generate(options: Options) -> dict[str, bytes]:
         price = _money(float(cost) * rng.uniform(1.4, 2.6))
         name = f"{rng.choice(ADJECTIVES).title()} {rng.choice(NOUNS).title()} {i:03d}"
         products.append((f"P{i:04d}", name, rng.choice(CATEGORIES), cost, price))
+    product_weights = [rng.paretovariate(1.2) for _ in products]  # a few best sellers
+    expected_revenue = [w * float(p[4]) for w, p in zip(product_weights, products, strict=True)]
+    planted = products[expected_revenue.index(max(expected_revenue))]  # top seller by revenue
+    spike_start = end - timedelta(days=27)  # the last 4 complete weeks
+    spike = "return_spike" in options.scenarios
 
     customers: list[tuple[str, date, str, str]] = []
     for i in range(1, options.customers + 1):
@@ -121,7 +139,7 @@ def generate(options: Options) -> dict[str, bytes]:
             channel = rng.choice(CHANNELS)
             for _ in range(rng.choice((1, 1, 1, 2, 2, 3, 4))):
                 line_seq += 1
-                product = rng.choice(products)
+                product = rng.choices(products, weights=product_weights)[0]
                 qty = rng.choice((1, 1, 1, 2, 2, 3))
                 unit_price = _money(float(product[4]) * rng.uniform(0.95, 1.0))
                 discount = (
@@ -145,9 +163,10 @@ def generate(options: Options) -> dict[str, bytes]:
 
     returns: list[tuple[object, ...]] = []
     for line, ordered in lines:
-        if rng.random() >= 0.05:
+        spiked = spike and line[4] == planted[0] and ordered >= spike_start
+        if rng.random() >= (options.spike_return_rate if spiked else 0.05):
             continue
-        returned = ordered + timedelta(days=rng.randint(1, 20))
+        returned = ordered + timedelta(days=rng.randint(1, 10 if spiked else 20))
         if returned > end:
             continue
         qty_back = rng.randint(1, int(line[5]))
@@ -156,6 +175,8 @@ def generate(options: Options) -> dict[str, bytes]:
             CENT, rounding=ROUND_HALF_EVEN
         )
         reason = rng.choices([r for r, _ in REASONS], weights=[w for _, w in REASONS])[0]
+        if spiked:
+            reason = "defective"
         returns.append(
             (
                 f"R{len(returns) + 1:06d}",
@@ -178,7 +199,7 @@ def generate(options: Options) -> dict[str, bytes]:
         customer_header.append("email")
         customer_rows = [(*c, f"person{i}@example.test") for i, c in enumerate(customers, 1)]
 
-    return {
+    files = {
         "products.csv": _csv(
             ["product_id", "product_name", "category", "unit_cost", "list_price"], products
         ),
@@ -211,6 +232,16 @@ def generate(options: Options) -> dict[str, bytes]:
             returns,
         ),
     }
+    manifest = (
+        {
+            "planted_product": str(planted[0]),
+            "planted_category": str(planted[2]),
+            "spike_start": spike_start.isoformat(),
+        }
+        if spike
+        else {}
+    )
+    return files, manifest
 
 
 def _with_noise(
@@ -257,6 +288,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--pii-column", action="store_true", help="add an email column to customers"
     )
+    parser.add_argument("--scenario", action="append", default=[], choices=sorted(SCENARIOS))
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
     files = generate(
@@ -269,6 +301,7 @@ def main(argv: list[str] | None = None) -> int:
             args.start,
             args.noise,
             args.pii_column,
+            tuple(args.scenario),
         )
     )
     args.out.mkdir(parents=True, exist_ok=True)

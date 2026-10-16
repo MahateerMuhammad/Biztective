@@ -256,7 +256,7 @@ async def test_idempotent_retries_and_duplicate_content(
     assert "version 1" in duplicate.json()["detail"]
     with owner_engine.connect() as conn:
         assert conn.scalar(text("SELECT count(*) FROM datasets")) == 1
-        assert conn.scalar(text("SELECT count(*) FROM jobs")) == 1
+        assert conn.scalar(text("SELECT count(*) FROM jobs WHERE type = 'ingest_dataset'")) == 1
 
 
 async def test_concurrent_uploads_get_distinct_versions(
@@ -305,7 +305,9 @@ async def test_failure_rolls_back_every_write(
                 "(SELECT count(*) FROM validation_issues)"
             )
         )
-        job = conn.execute(text("SELECT status, attempts, last_error_code FROM jobs")).one()
+        job = conn.execute(
+            text("SELECT status, attempts, last_error_code FROM jobs WHERE type = 'ingest_dataset'")
+        ).one()
     assert written == 0
     assert tuple(job) == ("failed", 1, "unexpected_error")
     # A failed version does not block re-uploading the same files.
@@ -345,7 +347,9 @@ async def test_transient_errors_are_retried(
     ).json()
     assert detail["status"] == "ready"
     with owner_engine.connect() as conn:
-        job = conn.execute(text("SELECT status, attempts FROM jobs")).one()
+        job = conn.execute(
+            text("SELECT status, attempts FROM jobs WHERE type = 'ingest_dataset'")
+        ).one()
     assert tuple(job) == ("succeeded", 2)
 
 
@@ -360,7 +364,7 @@ async def test_expired_lease_is_recovered(
                 "lease_expires_at = now() - interval '1 minute'"
             )
         )
-    assert await run_jobs(app) == 1
+    assert await run_jobs(app) == 2  # the recovered ingestion, then the analysis it queues
     detail = (
         await client.get(f"/api/v1/businesses/{owner.business_id}/datasets/{response.json()['id']}")
     ).json()

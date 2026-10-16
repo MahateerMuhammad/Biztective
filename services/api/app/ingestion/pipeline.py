@@ -24,6 +24,7 @@ from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import undefer
 
+from app.analytics.service import request_analysis
 from app.core.db import set_business_context
 from app.ingestion.contract import (
     COLUMNS,
@@ -49,6 +50,7 @@ from app.ingestion.parsing import (
     parse_id,
     parse_int,
     parse_moment,
+    parse_status,
     parse_text,
 )
 from app.jobs.queue import LeasedJob
@@ -85,6 +87,7 @@ STORED: dict[FileKind, tuple[str, ...]] = {
         "discount_amount",
         "channel",
         "region",
+        "status",
     ),
     "returns": (
         "return_id",
@@ -103,7 +106,7 @@ STAGING_DDL: dict[FileKind, str] = {
     "customers": "customer_id text, signup_date date, region text, acquisition_channel text",
     "orders": "order_line_id text, order_id text, order_date date, ordered_at timestamptz, "
     "customer_id text, product_id text, quantity integer, unit_price numeric(18,4), "
-    "discount_amount numeric(18,4), channel text, region text",
+    "discount_amount numeric(18,4), channel text, region text, status text",
     "returns": "return_id text, order_line_id text, return_date date, returned_at timestamptz, "
     "quantity_returned integer, refund_amount numeric(18,4), reason_code text, "
     "reason_text text",
@@ -234,6 +237,9 @@ def _parse_row(
         values["discount_amount"] = values["discount_amount"] or Decimal(0)
         values["channel"] = values["channel"] or "unknown"
         values["region"] = values["region"] or "unknown"
+        values["status"] = values["status"] or "completed"
+    if kind == "products" and values["unit_cost"] is None:
+        sink.add(kind, "V-045", row=row_number, column="unit_cost", value=values["product_id"])
     return (row_number, *(values.get(name) for name in STORED[kind]))
 
 
@@ -262,6 +268,8 @@ def _parse_value(
             values[column.name] = parse_enum(raw)
         case "currency":
             parse_currency(raw, currency)  # validated only; the business currency is stored
+        case "status":
+            values[column.name] = parse_status(raw)
         case "date" | "datetime":
             moment = parse_moment(raw, ctx)
             values[column.name] = moment.local_date
@@ -446,6 +454,15 @@ async def _reference_rules(session: AsyncSession, sink: IssueSink) -> None:
         "order_line_id",
         f"NOT EXISTS (SELECT 1 FROM stg_orders o WHERE o.order_line_id = s.order_line_id "
         f"AND {ACCEPTED_O})",
+    )
+    await _flag(
+        session,
+        sink,
+        "returns",
+        "V-038",
+        "order_line_id",
+        f"EXISTS (SELECT 1 FROM stg_orders o WHERE o.order_line_id = s.order_line_id "
+        f"AND {ACCEPTED_O} AND o.status = 'cancelled')",
     )
     await _flag(
         session,
@@ -743,6 +760,10 @@ async def ingest_dataset(sessionmaker: async_sessionmaker[AsyncSession], job: Le
                 completed_at=datetime.now(UTC),
             )
         )
+        if not outcome.rejected:
+            await session.execute(text("SELECT refresh_dataset_statistics()"))
+            # Same transaction: a ready dataset always has an analysis queued (AMD-10).
+            await request_analysis(session, dataset.business_id, dataset.id, dataset.uploaded_by)
 
 
 async def mark_dataset_failed(

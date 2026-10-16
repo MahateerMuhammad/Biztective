@@ -15,12 +15,22 @@ class Permission(StrEnum):
     DATASET_READ = "dataset:read"
     DATASET_UPLOAD = "dataset:upload"
     AUDIT_READ = "audit:read"
+    ANALYTICS_READ = "analytics:read"
+    ANALYSIS_RUN = "analysis:run"
 
 
 ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
     "owner": frozenset(Permission),
     "analyst": frozenset(
-        {Permission.BUSINESS_READ, Permission.DATASET_READ, Permission.DATASET_UPLOAD}
+        {
+            Permission.BUSINESS_READ,
+            Permission.DATASET_READ,
+            Permission.DATASET_UPLOAD,
+            Permission.ANALYTICS_READ,
+            Permission.ANALYSIS_RUN,
+        }
     ),
-    "viewer": frozenset({Permission.BUSINESS_READ, Permission.DATASET_READ}),
+    "viewer": frozenset(
+        {Permission.BUSINESS_READ, Permission.DATASET_READ, Permission.ANALYTICS_READ}
+    ),
 }

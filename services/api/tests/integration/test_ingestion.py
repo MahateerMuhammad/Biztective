@@ -563,3 +563,45 @@ async def test_text_enum_and_price_rules(
     assert c[("returns", "V-016")] == 1
     assert c[("returns", "V-015")] == 1
     assert c[("orders", "V-043")] == 1  # 90.00 is above 3x the 25.00 list price
+
+
+async def test_cancelled_lines_and_missing_costs(
+    app: FastAPI, client: httpx.AsyncClient, owner: Tenant, owner_engine: Engine
+) -> None:
+    header = fx.ORDERS.splitlines()[0] + ",status"
+    lines = [line + ",completed" for line in fx.ORDERS.splitlines()[1:]]
+    padding = [
+        f"L{9000 + i},O{9000 + i},2026-03-06,C2,P2,1,12.00,0,web,south,completed" for i in range(60)
+    ]
+    orders = (
+        "\n".join(
+            [
+                header,
+                *lines,
+                "L7,O7,2026-03-05,C1,P1,1,25.00,0,web,north,canceled",
+                "L8,O8,2026-03-05,C1,P1,1,25.00,0,web,north,shipped",
+                *padding,
+            ]
+        )
+        + "\n"
+    )
+    returns = fx.with_rows(
+        fx.RETURNS,
+        "R7,L7,2026-03-06,1,25.00,changed_mind,",
+        *[f"RP{i},L{9000 + i},2026-03-07,1,1.00,other," for i in range(60)],
+    )
+    products = fx.PRODUCTS.replace("P3,Echo Tray,Kitchen,2.25,6.50", "P3,Echo Tray,Kitchen,,6.50")
+    detail = await ingest(
+        app, client, owner, fx.dataset(orders=orders, returns=returns, products=products)
+    )
+    assert detail["status"] == "ready", detail
+    c = counts(detail)
+    assert c[("returns", "V-038")] == 1  # return of a cancelled line
+    assert c[("orders", "V-016")] == 1  # "shipped" is not an allowed status
+    assert c[("products", "V-045")] == 1  # missing cost is a warning, not a rejection
+    with owner_engine.connect() as conn:
+        assert (
+            conn.scalar(text("SELECT status FROM order_lines WHERE order_line_id = 'L7'"))
+            == "cancelled"
+        )
+        assert conn.scalar(text("SELECT unit_cost FROM products WHERE product_id = 'P3'")) is None

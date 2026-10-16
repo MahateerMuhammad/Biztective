@@ -113,6 +113,16 @@ def parse_enum(value: str) -> str:
     return code
 
 
+ORDER_STATUSES = {"completed": "completed", "cancelled": "cancelled", "canceled": "cancelled"}
+
+
+def parse_status(value: str) -> str:
+    status = ORDER_STATUSES.get(value.strip().lower())
+    if status is None:
+        raise InvalidValueError("V-016", "Allowed: completed, cancelled.")
+    return status
+
+
 def parse_currency(value: str, business_currency: str) -> str:
     code = value.strip().upper()
     if not _CURRENCY.match(code):

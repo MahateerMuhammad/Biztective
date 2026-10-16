@@ -144,6 +144,8 @@ For a period P (a week, window or range) and slice S (dimension = value, or over
 
 ### 3.3 Metrics
 
+> **Amended by AMD-10 and AMD-11:** cancelled lines are excluded from L, COGS-based metrics need full cost coverage, and default API ranges are defined. As built: §11.
+
 | # | Metric | Formula | Period basis | Undefined when |
 |---|---|---|---|---|
 | M01 | `gross_sales` | Σ_{L} quantity × unit_price | order_date | never (0 if empty) |
@@ -210,6 +212,8 @@ Product slices for M09 use the same formula restricted to the product's lines an
 Config rows are immutable. A change creates v2, and existing revisions keep their version.
 
 ## 4. Customer loyalty and risk segmentation
+
+> **Amended by AMD-10:** the segment table below is replaced by lifecycle segments (`loyal`, `at_risk`, `dormant`, `insufficient_history`), and the `churn_risk` flag is removed. RFM scores, `return_risk` and `key_account` are unchanged. As built: §11.3.
 
 The as-of date is `T` (ARCHITECTURE §5.1). It is computed over the effective data of a revision for customers with ≥ 1 valid order.
 
@@ -706,3 +710,85 @@ All tenant tables have RLS select and insert policies keyed on `app.current_busi
 | GET | `/businesses/{bid}/datasets/{did}/records/{orders\|products\|customers\|returns}` | `dataset:read` | Ready datasets only (else 409 `dataset_not_ready`). Ordered by `source_row`. Decimals are returned as strings |
 | GET | `/businesses/{bid}/datasets/{did}/export/{orders\|products\|customers\|returns\|issues}` | `dataset:read` | CSV attachment. Every cell starting with `= + - @`, tab or CR is prefixed with `'` (SEC-16). Built in a bounded spooled temp file |
 | PATCH | `/businesses/{bid}` | `business:update` (owner) | `{currency?, timezone?}`. A currency change returns 409 `currency_locked` once any dataset exists |
+
+## 11. Phase 4 analytics contract (AMD-10, AMD-11, as built)
+
+### 11.1 Scope of L and R
+
+- **L:** order lines with `status = 'completed'` in the period. Cancelled lines are excluded from every metric and reported as `cancelled_excluded`.
+- **R:** returns by `return_date` in the period. Returns of cancelled lines cannot exist (V-038).
+- **Slices:** a return takes its line's slice.
+- **Repeat and new customers** (M18, M19) use each customer's first completed order over the whole dataset.
+- **Weekly views:** the "period" is the ISO week (Monday to Sunday), and multi-week ratios are Σ numerator / Σ denominator (A11).
+
+### 11.2 Formulas exactly as implemented (`app/analytics/metrics.py`)
+
+M01–M19 are as §3.3. In addition:
+
+- `cogs_sold` is defined only if every line in scope has a `unit_cost`. `cogs_restocked` is defined only if every restockable return (reason not damaged or defective) in scope has a cost. `gross_profit` and `gross_margin_pct` need both. A cost is never estimated from other products.
+- **M20** (`net_revenue_per_active_customer_week`) is Σ weekly net revenue / Σ weekly active customers. It is used for detection impacts.
+- **M21** (`matured_cohort_refund_rate`) covers lines ordered in [start, min(end, T − 14 d)], counting their refunds dated within 14 days of the order. It is shown per product.
+- **Precision:**
+  - Arithmetic runs in a 60-digit decimal context, with ROUND_HALF_EVEN.
+  - Money is output as strings with 4 dp (aov included).
+  - Ratios are output as strings with 6 dp.
+  - Counts are integers.
+  - Undefined values are `null`.
+
+### 11.3 Customer segmentation
+
+- **As-of date T:** the last completed order date. Only completed orders up to T count, and only refunds dated on or before T.
+- **Inputs:** recency (T − last order), lifetime distinct orders, distinct orders in the trailing 365 days (F), and net revenue in the trailing 365 days (M). Refunds are attributed through the line.
+- **Cadence:** `median_gap_days` is the median gap between consecutive distinct order dates.
+- **Rules:** the lifecycle rules are as AMD-10, with constants in `analysis_config` v1 (`dormant_days` 180, `dormant_gap_multiplier` 4.0, `churn_gap_multiplier` 2.0, `churn_min_recency_days` 30, `min_history_days` 60). Customers with only cancelled lines are not segmented.
+- **Scores and flags:** RFM scores and the `return_risk` and `key_account` flags are as §4.
+- **Storage:** results are stored per analysis revision in `customer_segments`.
+
+### 11.4 Detection, severity, records in scope and evidence
+
+**Detection** follows ARCHITECTURE §5, with the AMD-10 and AMD-11 details:
+- 4 current complete weeks against up to 12 baseline complete weeks; at least 8 baseline weeks with orders are required.
+- Slices are overall, category, region, channel, product (top 80% of baseline net sales, at most 50) and customer segment (segments as of the end of the baseline).
+- Minimum support, robust z (1.4826 × MAD), and the change, materiality and impact formulas are as ARCHITECTURE §5.
+- Consolidation: parent suppression, then a Jaccard overlap merge of W order sets ≥ 0.60 across dimensions, then ranking. At most 5 incidents are kept, and the top 3 are marked `investigated`.
+
+**Severity** is the impact as a share of overall net revenue in W: ≥ 5% `critical`, ≥ 2.5% `high`, ≥ 1% `medium`, otherwise `low`.
+
+**Records in scope** (`affected`) are the slice's completed order lines, distinct orders and customers in W, plus its returns in W. This is scope, not causation.
+
+**Evidence items** are insert-only, and each `result_hash` is the SHA-256 of canonical JSON:
+
+| Kind | Content |
+|---|---|
+| `incident_detection` | Weekly B and W series, median, MAD, σ̂, current value, z, Δ, impact, materiality, onset week, support counts, config version |
+| `source_records` | Reproducible filter (table, dataset, window, slice) and exact counts. Up to 25 source references `{file, source_row, key, amount, detail}`, ordered by contribution: refund amount for refund metrics, discount for discount metrics, line net sales otherwise |
+| `return_reason_mix` | For refund incidents: refunds and shares by reason code, B against W |
+
+**Reproducibility:** the revision hash is SHA-256 over the hashes of the weekly metric snapshot, the segment list and the incidents (with their evidence hashes). Recomputing on the same revision yields identical hashes, which is tested.
+
+### 11.5 Endpoints
+
+All require `analytics:read` (owner, analyst, viewer) unless noted. Each takes `/businesses/{bid}/datasets/{did}` as prefix. The dataset must be `ready`, otherwise 409 `dataset_not_ready`. A dataset with no completed lines returns 409 `no_completed_orders`.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/metrics` | `?from&to&granularity=total\|week&dimension=overall\|category\|product\|region\|channel\|customer_segment\|acquisition_channel`. Default range is [first order, last activity]. At most 1,100 days. `customer_segment` needs a finished analysis (else 409 `analysis_not_ready`) |
+| GET | `/metrics/comparison` | Current period against the immediately preceding equal-length period. The default current period is the last 4 complete weeks. `previous: null` plus `comparison_unavailable` when the earlier period starts before the data |
+| GET | `/products` | Per product: all metrics plus `matured_cohort_refund_rate`, ordered by net revenue. `?limit` up to 500 |
+| GET | `/segments` | Distribution, monetary totals and human-readable rules from the latest finished analysis |
+| GET | `/customers` | `?segment&limit&cursor`. Pseudonymous customer IDs with cadence statistics and flags |
+| GET | `/analysis` | Latest revision: status, windows, restrictions, summary (including detection coverage) and incidents with evidence references |
+| POST | `/analysis` | `analysis:run` (owner, analyst). Idempotent per (dataset, config, code). A `failed` revision is re-queued |
+| GET | `/incidents/{iid}` | Incident with full evidence payloads |
+
+Every analytics response carries `restrictions[]` with codes `missing_costs`, `incomplete_period`, `comparison_unavailable`, `insufficient_history`, `immature_returns`, `low_sample` and `cancelled_excluded`.
+
+### 11.6 Schema (migration `0003`)
+
+- `order_lines.status`: `completed` or `cancelled`, with a partial index on completed lines.
+- `products.unit_cost` becomes nullable.
+- `analysis_configs`: v1 seeded, read-only to the app.
+- `analysis_revisions`: unique per (dataset, config version, code version). `completed` and `insufficient_data` rows are immutable (trigger).
+- `customer_segments`, `incidents` and `evidence_items`: insert-only, with RLS.
+- `refresh_dataset_statistics()` (AMD-11).
+- The `jobs.type` values now include `analyze_dataset`.

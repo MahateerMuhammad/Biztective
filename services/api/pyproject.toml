@@ -24,6 +24,7 @@ dev = [
     "ruff==0.17.1",
     "mypy==2.4.0",
     "pip-audit==2.10.1",
+    "hypothesis==6.170.1",
 ]
 
 [tool.uv]
@@ -35,6 +36,11 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "S", "ASYNC", "N", "SIM", "RUF", "PT", "BLE", "T20"]
+# Mathematical notation used deliberately in formulas and comments.
+allowed-confusables = ["×", "−", "–", "≤", "≥"]
+
+[tool.ruff.lint.flake8-pytest-style]
+fixture-parentheses = false
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S105", "S106", "S608"]

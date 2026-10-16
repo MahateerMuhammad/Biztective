@@ -22,6 +22,10 @@ TENANT_TABLES = (
     "returns",
     "validation_issues",
     "idempotency_keys",
+    "analysis_revisions",
+    "customer_segments",
+    "incidents",
+    "evidence_items",
 )
 
 
@@ -107,6 +111,10 @@ def test_audit_insert_for_foreign_business_is_rejected(
         "UPDATE datasets SET business_id = gen_random_uuid()",
         "DELETE FROM datasets",
         "UPDATE jobs SET type = 'x'",
+        "UPDATE incidents SET impact = 0",
+        "DELETE FROM evidence_items",
+        "UPDATE customer_segments SET segment = 'loyal'",
+        "UPDATE analysis_configs SET constants = '{}'",
         "DELETE FROM jobs",
         "INSERT INTO memberships (business_id, user_id, role) "
         "VALUES (gen_random_uuid(), gen_random_uuid(), 'owner')",

@@ -19,6 +19,10 @@ RECORD_TABLES = (
     "returns",
     "validation_issues",
     "idempotency_keys",
+    "analysis_revisions",
+    "customer_segments",
+    "incidents",
+    "evidence_items",
 )
 
 

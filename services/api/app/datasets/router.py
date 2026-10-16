@@ -74,6 +74,7 @@ RECORD_COLUMNS: dict[RecordKind, tuple[str, ...]] = {
         "discount_amount",
         "channel",
         "region",
+        "status",
     ),
     "returns": (
         "return_id",

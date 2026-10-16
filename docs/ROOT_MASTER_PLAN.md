@@ -661,3 +661,62 @@ Format:
   - **Benchmark job.** The ingestion benchmark (`pytest -m perf`) runs on demand in CI (`workflow_dispatch`), not on every push.
 - Reason: Phase 3 implementation findings.
 - Supersedes: none (additive).
+
+### AMD-10 — 2026-10-16 — Phase 4
+- Affects: §8 (Phase 4 scope), DATA_CONTRACTS §2.1, §2.3, §2.6, §3, §3.5, §4, §6.3, §7.5. ARCHITECTURE §5, §6.3, §13.1. SECURITY_MODEL §5.1.
+- **Scope.** User Phase 4 is the baseline Phase 5 analytics engine plus the deterministic parts of baseline Phase 6:
+  - incident detection exactly per ARCHITECTURE §5
+  - severity and affected-record counts
+  - source-level evidence items
+  - analysis revisions
+
+  The hypothesis catalog and verification (ARCHITECTURE §6.2, §6.4) remain with the LLM and orchestration phase. The UI is a lean, table-based analytics page; charts (Recharts) are deferred to the dashboard work, so no unused dependency is added.
+- **Customer segmentation (replaces the DATA_CONTRACTS §4 segment table).** The prompt requires the lifecycle segments `loyal`, `at_risk`, `dormant` and `insufficient_history`, and forbids calling a decline confirmed churn without evidence. RFM scores (R, F, M from 1 to 5, exactly as §4) and the flags `return_risk` and `key_account` are still computed and stored. Lifecycle segment, as of T, first match wins:
+  1. `dormant`: recency_days > `dormant_days` (180), **or** (lifetime_orders ≥ 3 ∧ recency_days > `dormant_gap_multiplier` (4.0) × median_gap_days ∧ recency_days > `churn_min_recency_days` (30)).
+  2. `insufficient_history`: lifetime_orders < 3 (no purchase cadence can be estimated), **or** T − first_order_date < `min_history_days` (60).
+  3. `at_risk`: recency_days > `churn_gap_multiplier` (2.0) × median_gap_days ∧ recency_days > 30. This is the §4 `churn_risk` rule, now a segment, so the `churn_risk` flag is removed. The output says "overdue versus own purchase cadence" and never "churned".
+  4. `loyal`: everything else (three or more orders, on cadence, active within 180 days).
+
+  `median_gap_days` is the median of the gaps between consecutive distinct order dates. A customer is never classified from orders after T, and a dataset that covers less than `dormant_days` cannot produce absolute-inactivity dormancy.
+- **Cancelled order lines.** `orders.csv` gets an optional `status` column (synonyms `order_status`, `line_status`). Allowed values are `completed` (default when the column is absent or blank) and `cancelled` (`canceled` is accepted); anything else is V-016. Cancelled lines are stored, but excluded from every sales metric (L in §3.2) and from customer statistics. They are reported as the informational counts `cancelled_lines` and `cancelled_value` (Σ quantity × unit_price − discount). A return referencing a cancelled line is rejected with the new code **V-038**.
+- **Missing costs.** `products.unit_cost` becomes optional, and a blank value gives a new warning, **V-045** "unit cost missing". COGS (M06, M07), gross profit (M08) and gross margin (M09) are computed for a scope only when every line and return in that scope has a known cost; otherwise they are `null`, with the restriction `missing_costs` (which lists the products concerned). A COGS figure is never estimated from other products. Recognised COGS is an estimate under A4 (constant current cost), and the output labels it that way.
+- **Equal-period comparison.** For a requested inclusive range [a, b], the comparison period is [a − n, a − 1], where n = b − a + 1 days. If the comparison period starts before the dataset's first order date, it is `unavailable` (restriction `comparison_unavailable`) rather than computed on partial data. If b > T, the current period is marked `incomplete_period`. Changes are absolute, and relative is `(cur − prev)/|prev|`, which is null when prev = 0.
+- **Restrictions (data-quality warnings that block unsupported calculations).** Every analytics response carries `restrictions[]` of {code, message, affects}. The codes:
+
+  | Code | When |
+  |---|---|
+  | `missing_costs` | Some lines or returns in scope have no product cost |
+  | `incomplete_period` | The range extends beyond T or before the data start |
+  | `comparison_unavailable` | The equal comparison period is not fully covered |
+  | `insufficient_history` | Fewer than 12 complete weeks, so detection is not run |
+  | `immature_returns` | Orders within `return_maturity_days` of T are in scope, so refund rates can still rise |
+  | `low_sample` | Segmentation n < 20 |
+  | `cancelled_excluded` | Informational |
+
+- **Detection details left open by ARCHITECTURE §5:**
+  - **Metric applicability:** all 7 metrics for `overall`, `category`, `region` and `channel`. `net_revenue`, `gross_margin_pct`, `refund_rate` and `discount_rate` for `product`. `net_revenue`, `active_customers`, `aov` and `refund_rate` for `customer_segment`.
+  - **Rates with a zero baseline median:** the relative-change condition counts as satisfied when Δabs exceeds its threshold (an infinite relative change).
+  - **Undefined weekly values** (zero denominators, missing costs) are excluded from medians. Fewer than `min_baseline_weeks` defined values means the slice is not tested.
+  - **First week:** only complete weeks count, so the first week counts only if the first order date is a Monday.
+  - **Severity** from the impact share of overall `net_revenue_W`: ≥ 5% `critical`, ≥ 2.5% `high`, ≥ 1% `medium`, else `low`. When `net_revenue_W` ≤ 0, severity is `critical`.
+  - **Affected records:** order lines, distinct orders and distinct customers of the slice in W; plus returns of the slice in W for refund metrics. They are reported as "records in scope", which does not claim they caused the change.
+- **Evidence kinds (insert-only, SHA-256 of canonical JSON):**
+  - `incident_detection`: the weekly series, statistics, thresholds and config version.
+  - `source_records`: a reproducible filter specification, exact counts, and up to 25 source references (file, `source_row`, key), ordered by contribution.
+  - `return_reason_mix`: refund share by reason, B versus W, for refund incidents.
+- **Precision.** Money stays `Decimal` from `NUMERIC(18,4)`. Analytics runs in a local decimal context with 60 significant digits. Money is output as 4-dp strings and ratios as 6-dp strings (half-even), always computed from unrounded sums. Medians and MADs use exact `Decimal` on aggregated weekly values; z is reported as a float, rounded to 4 dp.
+- **Dependencies.** pandas is **not** added. Detection works on at most a few thousand aggregated weekly values, and the standard library plus SQL aggregation is enough (ADR-005 intent kept: money in SQL NUMERIC). `hypothesis` is added as a dev dependency for property tests.
+- **Permissions.** New permission `analysis:run` (owner, analyst). `analytics:read` covers owner, analyst and viewer.
+- **Execution.** Analysis runs as the job `analyze_dataset`. It is enqueued automatically when ingestion makes a dataset `ready`, and can be re-requested; the same (dataset, config version, code version) is deduplicated.
+- Reason: The user's Phase 4 instruction, and gaps in the baseline contract (cancellations, missing costs, segment vocabulary).
+- Supersedes: the DATA_CONTRACTS §4 segment table and `churn_risk` flag; `unit_cost` required in §2.1; the §2.3 column list (adds `status`).
+
+### AMD-11 — 2026-10-16 — Phase 4
+- Affects: ARCHITECTURE §5.4 (`aov` window value), DATA_CONTRACTS §11 (default ranges), SECURITY_MODEL §6 (database privileges).
+- Change:
+  1. **`aov` window value.** For W and B, `aov` is computed as the aggregate ratio Σ net_sales / Σ orders, like the rate metrics, rather than as the mean of weekly AOVs. Its change thresholds remain those of an amount (15% relative). Reason: A11 forbids averaging ratios.
+  2. **Default API ranges.** Analytics endpoints default to [first completed order, last activity], where last activity is the later of the last completed order date and the last return date. A range ending at T would silently omit refunds recorded after the last order. Detection and segmentation keep T = last completed order date (ARCHITECTURE §5.1).
+  3. **Statistics refresh.** The owner-defined `SECURITY DEFINER` function `refresh_dataset_statistics()` runs `ANALYZE` on `products`, `customers`, `order_lines` and `returns`. Ingestion calls it in the same transaction that makes a dataset ready. The app role has only `EXECUTE`. The function takes no arguments, has a fixed `search_path`, and reads or writes no tenant data.
+
+     Reason: this was found by measurement. Without fresh statistics, the third and later datasets in a database were planned with nested loops, and analysis took 24–27 s instead of 0.9 s. The runtime role cannot `ANALYZE` tables it does not own, and `MAINTAIN` would require PostgreSQL 17 or later.
+- Supersedes: ARCHITECTURE §5.4 step 3 for `aov` only.

@@ -106,6 +106,8 @@
 | `integration:manage` | ✓ | | |
 | `audit:read` | ✓ | | |
 
+> **Amended by AMD-10 (implemented in Phase 4):** `analysis:run` exists, granted to owner and analyst. `analytics:read` is granted to owner, analyst and viewer.
+
 ### 5.2 Enforcement
 
 - Each FastAPI route declares `Depends(require_permission("…"))`. A startup check and test T-16 fail if any `/api/v1/businesses/**` route lacks one.

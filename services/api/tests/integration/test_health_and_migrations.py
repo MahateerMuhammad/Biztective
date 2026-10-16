@@ -13,13 +13,18 @@ from tests.conftest import (
 
 EXPECTED_TABLES = {
     "alembic_version",
+    "analysis_configs",
+    "analysis_revisions",
     "audit_log",
     "auth_attempts",
     "businesses",
+    "customer_segments",
     "customers",
     "dataset_files",
     "datasets",
+    "evidence_items",
     "idempotency_keys",
+    "incidents",
     "jobs",
     "memberships",
     "order_lines",
@@ -29,7 +34,14 @@ EXPECTED_TABLES = {
     "users",
     "validation_issues",
 }
-RLS_TABLES = EXPECTED_TABLES - {"alembic_version", "auth_attempts", "jobs", "sessions", "users"}
+RLS_TABLES = EXPECTED_TABLES - {
+    "alembic_version",
+    "analysis_configs",
+    "auth_attempts",
+    "jobs",
+    "sessions",
+    "users",
+}
 
 
 async def test_healthz(client: httpx.AsyncClient) -> None:
@@ -95,10 +107,12 @@ def test_migrations_upgrade_downgrade_upgrade(admin_url: str, app_password: str)
         assert functions == 0
 
         command.upgrade(config, "head")
-        command.downgrade(config, "0001")  # each revision downgrades on its own
-        command.upgrade(config, "head")
+        for target in ("0002", "0001"):  # each revision downgrades on its own
+            command.downgrade(config, target)
+            command.upgrade(config, "head")
         with engine.connect() as conn:
-            assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "0002"
+            assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "0003"
+            assert conn.scalar(text("SELECT count(*) FROM analysis_configs")) == 1
     finally:
         engine.dispose()
         drop_database(admin_url, name)

@@ -82,3 +82,23 @@ test("uncertain column matches wait for human confirmation", async ({ page }) =>
   const exported = await (await page.request.get(exportHref!)).text();
   expect(exported).toContain("'=SUM(A1)"); // formula neutralised for spreadsheets
 });
+
+test("analytics page shows computed metrics and data limitations", async ({ page }) => {
+  await signIn(page);
+  const content = files("order_line_id,order_id,order_date,customer_id,product_id,quantity,unit_price");
+  content.orders = content.orders!.replace(/\n[^\n]*03\/04\/2026[^\n]*/, "");
+  content.products = content.products!.replace("2.00,5.00", ",5.00"); // P1 without unit cost
+  await uploadFiles(page, content); // exact headers: no mapping decision needed
+  await expect(page.getByRole("status")).toHaveText("Ready", { timeout: 30_000 });
+
+  await page.getByRole("link", { name: "View analytics" }).click();
+  await expect(page.getByRole("heading", { name: "Analytics" })).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("not enough history", { timeout: 30_000 });
+  const limits = page.getByRole("alert").filter({ hasText: "Data limitations" });
+  await expect(limits).toContainText("missing_costs");
+  await expect(limits).toContainText("insufficient_history");
+  const products = page.getByRole("table", { name: "Product performance and return rates" });
+  await expect(products.getByRole("row", { name: /P2/ })).toContainText("$9.00");
+  const segments = page.getByRole("table", { name: "Customers by lifecycle segment" });
+  await expect(segments.getByRole("row", { name: /Insufficient history/ })).toContainText("2");
+});

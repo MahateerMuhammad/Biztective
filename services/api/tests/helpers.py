@@ -9,8 +9,8 @@ from fastapi import FastAPI
 from sqlalchemy import Engine, insert
 
 from app.auth.passwords import hash_password
-from app.ingestion.pipeline import ingest_dataset
 from app.jobs.worker import process_next_job
+from app.main import JOB_HANDLERS
 from app.models import Business, Dataset, Membership, User
 
 FRONTEND_ORIGIN = "http://localhost:3000"
@@ -114,7 +114,7 @@ async def run_jobs(app: FastAPI, limit: int = 20) -> int:
     """Run due jobs synchronously, exactly as the lifespan worker would. Returns jobs run."""
     ran = 0
     while ran < limit and await process_next_job(
-        app.state.sessionmaker, {"ingest_dataset": ingest_dataset}, app.state.on_job_failure
+        app.state.sessionmaker, JOB_HANDLERS, app.state.on_job_failure
     ):
         ran += 1
     return ran
@@ -142,3 +142,19 @@ async def upload(
         headers=headers,
         **multipart(files, **fields),  # type: ignore[arg-type]
     )
+
+
+async def ingest_files(
+    app: FastAPI,
+    client: httpx.AsyncClient,
+    business_id: uuid.UUID,
+    files: dict[str, bytes],
+    **fields: str,
+) -> dict[str, object]:
+    """Upload, run all jobs (ingestion and analysis), and return the dataset detail."""
+    response = await upload(client, business_id, files, **fields)
+    assert response.status_code == 202, response.text
+    await run_jobs(app)
+    detail = await client.get(f"/api/v1/businesses/{business_id}/datasets/{response.json()['id']}")
+    body: dict[str, object] = detail.json()
+    return body

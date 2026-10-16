@@ -12,7 +12,7 @@ FileKind = Literal["products", "customers", "orders", "returns"]
 FILE_KINDS: tuple[FileKind, ...] = ("products", "customers", "orders", "returns")
 
 ColumnType = Literal[
-    "id", "text", "dimension", "decimal", "int", "datetime", "date", "enum", "currency"
+    "id", "text", "dimension", "decimal", "int", "datetime", "date", "enum", "currency", "status"
 ]
 
 MAX_FILE_BYTES = 25 * 1024 * 1024
@@ -62,7 +62,7 @@ COLUMNS: dict[FileKind, tuple[Column, ...]] = {
         Column(
             "unit_cost",
             "decimal",
-            True,
+            False,
             ("cost", "cogs", "unit_cogs", "cost_price"),
             minimum=0,
             maximum=1_000_000_000,
@@ -139,6 +139,7 @@ COLUMNS: dict[FileKind, tuple[Column, ...]] = {
         Column("channel", "dimension", False, ("sales_channel",)),
         Column("region", "dimension", False, ("sales_region", "ship_region", "shipping_region")),
         Column("currency", "currency", False, ("currency_code",)),
+        Column("status", "status", False, ("order_status", "line_status")),
     ),
     "returns": (
         Column("return_id", "id", True, ("rma_id", "return_number", "rma")),
@@ -269,9 +270,15 @@ ISSUE_CODES: dict[str, tuple[Severity, str]] = {
         "warning",
         "Unit price is far from the product's list price (above 3x or below 0.1x).",
     ),
+    "V-038": ("error", "Return refers to an order line that was cancelled."),
     "V-044": (
         "warning",
         "Ambiguous local time (daylight-saving change); the first occurrence was used.",
+    ),
+    "V-045": (
+        "warning",
+        "Product unit cost is missing; COGS, gross profit and margin are unavailable where it "
+        "is needed.",
     ),
     "V-099": (
         "error",

@@ -12,9 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Job
 
-JobType = Literal["ingest_dataset"]
+JobType = Literal["ingest_dataset", "analyze_dataset"]
 LEASE = timedelta(seconds=120)
-MAX_ATTEMPTS: dict[JobType, int] = {"ingest_dataset": 3}
+MAX_ATTEMPTS: dict[JobType, int] = {"ingest_dataset": 3, "analyze_dataset": 3}
 
 
 def utcnow() -> datetime:

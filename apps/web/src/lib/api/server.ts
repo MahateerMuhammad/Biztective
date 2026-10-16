@@ -3,7 +3,19 @@ import "server-only";
 import { cookies } from "next/headers";
 import { cache } from "react";
 
-import type { Business, DatasetDetail, DatasetPage, IssuePage, Me } from "./types";
+import type {
+  AnalysisRevision,
+  AnalyticsEnvelope,
+  Business,
+  ComparisonRow,
+  DatasetDetail,
+  DatasetPage,
+  IncidentDetail,
+  IssuePage,
+  Me,
+  ProductRow,
+  SegmentSummary,
+} from "./types";
 import { toApiProblem } from "./types";
 
 function backendUrl(): string {
@@ -69,4 +81,50 @@ export async function listIssues(
       `/api/v1/businesses/${encodeURIComponent(businessId)}/datasets/${encodeURIComponent(datasetId)}/issues?limit=${limit}`,
     )
   ).data;
+}
+
+function datasetPath(businessId: string, datasetId: string): string {
+  return `/api/v1/businesses/${encodeURIComponent(businessId)}/datasets/${encodeURIComponent(datasetId)}`;
+}
+
+/** Analytics reads: null when not found or not yet available (404/409). */
+async function analyticsGet<T>(path: string): Promise<T | null> {
+  const cookieHeader = (await cookies()).toString();
+  const response = await fetch(`${backendUrl()}${path}`, {
+    headers: cookieHeader ? { Cookie: cookieHeader } : {},
+    cache: "no-store",
+  });
+  if (response.status === 404 || response.status === 409 || response.status === 401) {
+    return null;
+  }
+  if (!response.ok) {
+    throw await toApiProblem(response);
+  }
+  return (await response.json()) as T;
+}
+
+export function getAnalysis(businessId: string, datasetId: string) {
+  return analyticsGet<AnalysisRevision>(`${datasetPath(businessId, datasetId)}/analysis`);
+}
+
+export function getComparison(businessId: string, datasetId: string) {
+  return analyticsGet<AnalyticsEnvelope<ComparisonRow[]>>(
+    `${datasetPath(businessId, datasetId)}/metrics/comparison`,
+  );
+}
+
+export function getProducts(businessId: string, datasetId: string, limit = 15) {
+  return analyticsGet<AnalyticsEnvelope<ProductRow[]>>(
+    `${datasetPath(businessId, datasetId)}/products?limit=${limit}`,
+  );
+}
+
+export function getSegments(businessId: string, datasetId: string) {
+  return analyticsGet<AnalyticsEnvelope<SegmentSummary>>(`${datasetPath(businessId, datasetId)}/segments`);
+}
+
+export function getIncident(businessId: string, datasetId: string, incidentId: string) {
+  return analyticsGet<IncidentDetail>(
+    `${datasetPath(businessId, datasetId)}/incidents/${encodeURIComponent(incidentId)}`,
+  );
 }

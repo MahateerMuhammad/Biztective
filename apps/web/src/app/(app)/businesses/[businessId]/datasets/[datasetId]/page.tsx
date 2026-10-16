@@ -53,6 +53,16 @@ export default async function DatasetPage({
         <p className="mt-1 text-sm" role="status" aria-live="polite">
           <span className="font-medium">{STATUS_TEXT[dataset.status]}</span>
         </p>
+        {dataset.status === "ready" ? (
+          <p className="mt-2">
+            <Link
+              href={`/businesses/${businessId}/datasets/${datasetId}/analytics`}
+              className="text-sm font-medium underline-offset-4 hover:underline"
+            >
+              View analytics
+            </Link>
+          </p>
+        ) : null}
         <p className="mt-1 text-xs text-muted-foreground">
           Times read as {dataset.source_timezone}; dates stored in {dataset.business_timezone};
           currency {dataset.currency}; checksum {dataset.checksum_sha256?.slice(0, 12)}…

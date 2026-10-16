@@ -603,3 +603,219 @@ The hash is recorded at the start of the next phase entry, as for previous phase
 
 - Phase 4 (baseline Phase 5, analytics) reads `order_lines`, `returns`, `products` and `customers` for `ready` datasets only, using `order_date` and `return_date` (business-local) and NUMERIC money.
 - The owner should confirm the CI results for `0881d4b` and the Phase 3 commit.
+
+---
+
+## Phase 4 — Analytics engine, segmentation and deterministic anomaly detection
+
+- **Date:** 2026-10-16
+- **Phase 3 bookkeeping:**
+  - Commit `4bb72ba36ed34eb75a9b3b3d0f7d2e4ff88ec2d3` was pushed to `origin/main` and verified with `git ls-remote` (local = remote).
+  - GitHub Actions results for `0881d4b` and `4bb72ba` are **still unobserved**: the repository is private and this session has no API access. AC-2.1 and AC-2.2 remain met **locally only**.
+
+### Objective and scope
+
+Build an accurate, explainable analytics engine with no LLM involved in any number:
+- revenue, discounts and refunds; recognised COGS estimates; gross profit and margin
+- equal-period comparisons; category and product performance with return rates
+- purchase frequency, recency and repeat-purchase analysis
+- lifecycle segmentation: loyal, at_risk, dormant, insufficient_history
+- historical baselines and deterministic anomaly detection, with severity and records in scope
+- source-level evidence, and data-quality restrictions that block unsupported calculations
+
+Scope mapping is AMD-10: baseline Phase 5 plus the deterministic parts of baseline Phase 6. The hypothesis catalog and verification stay with the LLM phase.
+
+### Plan amendments
+
+- **AMD-10** (recorded before code):
+  - segment vocabulary
+  - cancelled lines (optional `status` column, V-038)
+  - optional costs (V-045) with restrictions
+  - the equal-period definition
+  - the restrictions taxonomy
+  - detection details left open by ARCHITECTURE §5
+  - severity, records in scope and evidence kinds
+  - precision
+  - no pandas; `hypothesis` as a dev dependency
+  - the `analysis:run` permission
+  - analysis as a job that runs automatically after ingestion
+- **AMD-11** (recorded from findings): `aov` is an aggregate ratio; default API ranges end at the last activity; `refresh_dataset_statistics()`.
+
+### Formulas and computational assumptions (as implemented)
+
+- **Metrics:** M01–M21 exactly as DATA_CONTRACTS §3.3, implemented once in `app/analytics/metrics.py` (`derive(Totals)`):
+  - `net_sales` = gross − discounts
+  - `net_revenue` = net_sales − refunds (refunds dated by return_date)
+  - `gross_profit` = net_revenue − cogs_sold + cogs_restocked, where restocked means reason ∉ {damaged, defective}
+  - `gross_margin_pct` = gross_profit / net_revenue (null when net_revenue ≤ 0)
+  - aov, discount, refund, unit-return and repeat-customer rates are ratios of sums (A11)
+- **Cancelled orders:** excluded from L, reported separately. Returns of cancelled lines are rejected at ingestion (V-038).
+- **Partial refunds and quantities:** refunds are summed as recorded (V-035/V-036 ensure they never exceed the purchase). Unit return rate uses units, refund rate uses money.
+- **Restocked returns:** COGS is reversed only for restockable reasons (A5). Written-off returns reverse nothing.
+- **Missing historical costs:**
+  - `unit_cost` may be blank (V-045 warning).
+  - COGS, gross profit and margin are `null` in any scope that touches a cost-less product, and a `missing_costs` restriction names the products.
+  - Recognised COGS is an estimate under A4 (current cost applied to all periods), and is labelled as such.
+- **Zero denominators:** `null`, never 0 (tested for every ratio).
+- **Incomplete observation windows:**
+  - Detection uses complete ISO weeks only and needs at least 8 baseline weeks.
+  - Comparisons are `unavailable` when the earlier period starts before the data.
+  - `incomplete_period` and `immature_returns` restrictions are reported.
+  - M21 only uses lines at least 14 days old.
+- **Currency precision:** `NUMERIC(18,4)` storage, SQL `NUMERIC` sums, Python `Decimal` in a 60-digit context. Output is 4-dp money and 6-dp ratios (half-even), always from unrounded sums. Values above 10¹⁴ are tested to be exact.
+- **Churn claims:** none are made. `at_risk` means "overdue versus own cadence" and `dormant` means "no purchase for 180+ days or 4x the usual gap". Rules and reasons are exposed, and a test asserts that segment reasons never say "churn".
+
+### Code flow
+
+```
+ingest_dataset (ready) ── same tx ──► refresh_dataset_statistics() + request_analysis() → job analyze_dataset
+analyze_dataset: tx1 status running → tx2:
+  queries.dataset_bounds → T, first order, cancelled counts
+  queries.customer_stats(T) → segmentation.segment_customers (RFM + lifecycle + flags)
+  queries.aggregate(overall weekly, whole range)  → metrics snapshot (hashed)
+  periods.detection_windows → insufficient? → status insufficient_data (segments still stored)
+  segments as of baseline end → temp table (COPY + ANALYZE)
+  queries.aggregate(by week, GROUPING SETS: overall/category/product/region/channel/segment)
+  detection.evaluate_slice per (applicable metric × slice) → Flag | SliceSkip | None
+  queries.window_lines(W) → order sets, records in scope → detection.consolidate → incidents
+  evidence: detection stats, source_records (source rows), return_reason_mix
+  persist: customer_segments (COPY → INSERT…SELECT), incidents, evidence_items, hashes, revision
+API reads: queries.aggregate (+ M21 query) → metrics.derive/present → restrictions → response
+```
+
+**Layering:**
+- `queries.py`: raw data access, the only module with SQL.
+- `metrics.py`: aggregation algebra and metric definitions.
+- `segmentation.py`, `detection.py`, `evidence.py`, `periods.py`: pure functions with no I/O.
+- `service.py`: orchestration and persistence.
+- `router.py`: HTTP.
+
+### API and database changes
+
+- **Endpoints** (DATA_CONTRACTS §11.5): `/metrics`, `/metrics/comparison`, `/products`, `/segments`, `/customers`, `GET` and `POST /analysis`, `/incidents/{id}`.
+- **Migration `0003`** (§11.6), including RLS on all new tenant tables, an immutability trigger on finished revisions, the v1 analysis config seeded and read-only, and the statistics function.
+
+### Security controls
+
+- Every new route has a declared permission. The role matrix and cross-tenant tests enumerate them automatically: 404 cross-tenant, 403 when the permission is missing, no 5xx.
+- RLS applies to all analytics tables: no context, a foreign context and a forged insert all fail (tested).
+- The app role cannot change incidents, evidence, segments or configs (privilege tests).
+- SQL dimension expressions come only from an allowlist (`DIMENSION_SQL`). Unknown dimensions return 422 at the API and raise `ValueError` in code.
+- `refresh_dataset_statistics()` is the only `SECURITY DEFINER` function: it takes no input, has a fixed `search_path` and returns no tenant data.
+- Pseudonymous customer IDs only. The page shows evidence source rows by file and row number.
+
+### Performance and benchmarks (measured)
+
+Measured on macOS, i9-8950HK, local PostgreSQL 18.6, with seeded data (26 weeks, 3,000 customers, 150 products). Commands: `pytest tests/perf -m perf -s`.
+
+**Analysis job and representative queries** (statement counts from SQLAlchemy cursor events; wall time includes the full API stack):
+
+| Operation | ~20k lines (20,271) | ~100k lines (101,107) |
+|---|---|---|
+| Analysis job (segments ×2, weekly GROUPING SETS, 298–327 slice tests, evidence, persistence) | **25 statements, 0.73 s** | **25 statements, 2.12 s** |
+| `GET /metrics` (total) | 12 statements, 0.095 s | 12, 0.354 s |
+| `GET /metrics?granularity=week` | 12, 0.100 s | 12, 0.439 s |
+| `GET /metrics?granularity=week&dimension=category` | 12, 0.121 s | 12, 0.551 s |
+| `GET /metrics?dimension=customer_segment` | 17, 0.116 s | 17, 0.529 s |
+| `GET /metrics/comparison?dimension=product` | 14, 0.135 s | 14, 0.472 s |
+| `GET /products` | 14, 0.159 s | 14, 0.642 s |
+| `GET /segments`, `GET /analysis` | 10, 0.013 s / 10, 0.011 s | 10, 0.013 s / 10, 0.011 s |
+
+The statement counts include the per-request session, membership, RLS and dataset lookups. The analysis job count does not grow with data size.
+
+**Ingestion** (generator changed in this phase, and ANALYZE is now included):
+
+| Order lines | Upload request | Ingestion job | Total | Lines/s | Python peak |
+|---|---|---|---|---|---|
+| 20,271 | 0.143 s | 2.058 s | 2.20 s | 9,851 | 5.0 MB |
+| 101,107 | 0.287 s | 10.431 s | 10.72 s | 9,693 | 6.9 MB |
+
+**Two performance defects found and fixed by measurement:**
+1. **Stale planner statistics after bulk ingestion.** From the third dataset in a database onward, analysis took 24–27 s instead of 0.9 s: nested loops rescanned returns for each order line. Fixed with `refresh_dataset_statistics()` (AMD-11) and with window-function first-order computation, which removes the aggregate join whose plan depended on statistics. After the fix: 0.8–0.9 s per dataset across six consecutive datasets.
+2. **Segment persistence round trips.** SQLAlchemy's batched insert split into about 1,067 statements for 3,000 rows, because rows had varying shapes (optional gaps, flag arrays). Replaced by COPY into a temp table plus one `INSERT … SELECT`. The analysis job went from 1,090 to 25 statements.
+
+### Tests executed and actual results
+
+| Check | Result |
+|---|---|
+| `uv run ruff check .` / `ruff format --check .` | All checks passed. 85 files formatted (`allowed-confusables` added for × − – ≤ ≥ in formulas) |
+| `uv run mypy` (strict, 85 files) | No issues. All new analytics code is free of type ignores, except the documented loosely-typed driver-connection one |
+| `uv run pytest --cov` | **321 passed** (unit 135, integration 127, security 59), 4 perf deselected. Total coverage **96%**. **`app/analytics` 96%** (gate 95%). Auth and tenancy gate (≥ 95%) passed |
+| `uv run pytest tests/perf -m perf -s` | 4 passed (tables above) |
+| `uv run pip-audit` | No known vulnerabilities |
+| Frontend `lint`, `typecheck`, `test:coverage`, `build` | All exit 0. **30 Vitest tests**. Statements 97.71%, branches 86.95% |
+| `npm audit --omit=dev --audit-level=high` / `npm run audit:gate` | 0 / passed (AMD-7 exception only) |
+| `npx playwright test` (production build + API + worker + PostgreSQL) | **7 passed**, including the new analytics page test: data limitations, product net revenue, segment counts |
+| Migration up/down/up (base ↔ 0001 ↔ 0002 ↔ 0003) | Passed |
+
+**User-required test checklist:**
+
+| Requirement | Where |
+|---|---|
+| Reference dataset with independent expected values | `tests/analytics_reference.py` plus `test_analytics.py`. Every weekly metric and product metric is hand-derived in comments |
+| Property tests | `hypothesis`: metric identities, additivity, ratio-of-sums, 200 examples each |
+| Empty business | `test_empty_business_has_no_analytics` |
+| Single-order customers, segments near thresholds | 13 boundary cases in `test_lifecycle_thresholds` (exact 2x and 4x gaps, 180 days, 60-day history) plus the reference customers |
+| Duplicate order lines | counted once (`test_duplicate_order_lines_are_counted_once`) |
+| Fully refunded orders, partial returns, zero revenue | reference O3 and R3, `test_fully_refunded_and_zero_revenue_margin_is_undefined` |
+| Missing product costs | reference P3, ingestion V-045, restrictions, null margins |
+| Period boundaries | Sunday/Monday ISO weeks, inclusive ranges, equal-period arithmetic |
+| Customer ordering patterns | lifecycle cases (single, pairs, regular, overdue, lapsed, same-day orders) |
+| Extreme values | 10¹⁴-scale exact sums through the full upload path |
+| Small categories | `low_support` skips counted in the detection summary. Product coverage rule tested |
+| Clean data has no incidents | 5 seeds: zero incidents, with 298–327 slices actually tested |
+| Planted abnormal returns | 5 seeds: the planted product or category is detected with evidence. Every source reference resolves to a stored row, hashes verify, and the defective-reason share rises |
+| No fabricated incidents | materiality test (statistically anomalous but immaterial gives no incident). Static guard: no generator or demo vocabulary in `app/`. No LLM exists in the pipeline |
+| Reproducibility | two recomputations give identical hashes, and they match the persisted incidents |
+
+### Errors encountered and fixes applied
+
+1. Stale statistics led to pathological plans (24–27 s). Fixed with AMD-11 statistics refresh plus the window-function rewrite.
+2. Segment insert round trips (1,090 statements). Fixed with COPY plus `INSERT … SELECT`.
+3. Dates in incident JSON were not serialisable. Every JSONB payload now goes through the canonical encoder used for hashing, so the stored and hashed forms are identical.
+4. An empty period produced NULL sums, which crashed with a 500. Every SQL `SUM` is now `COALESCE`d.
+5. The default range ended at T and silently omitted refunds dated after the last order. Defaults now end at the last activity (AMD-11).
+6. Test-design corrections, made **without touching thresholds**:
+   - Seed 8 and seed 11 spikes were statistically anomalous but immaterial (impact 3,444 against materiality 3,674; 2,000 against 5,033). That is correct behaviour.
+   - The generator now plants spikes on the top product by revenue, and a dedicated test asserts that immaterial anomalies are not reported.
+   - A broad customer segment can legitimately outrank the planted product, so the test requires the planted slice to be among the refund incidents.
+7. Hand-arithmetic errors in two test expectations (C1 monetary as of T; the 10¹⁴ COGS) were found by the tests and corrected. The product was right.
+
+### Known limitations and remaining risks
+
+| Item | Note |
+|---|---|
+| CI unobserved | As above |
+| Static product cost (A4) | Margins over long periods use today's cost |
+| Overlapping incidents across dimensions | Broader slices (for example a customer segment) can rank above the specific product because impact is not additive. Root-cause attribution belongs to the hypothesis phase |
+| Multiple-comparison risk | About 300 slice tests per run. 5 clean seeds gave 0 false positives under config v1, but calibration over more seeds and real data remains |
+| Segment as-of uses T | Customers whose first order is near the dataset start look newer than they are (left censoring). Documented |
+| No charts yet | Tables only. Charts with table alternatives are deferred (AMD-10) |
+| Analysis CPU in the API process | About 2 s at 100k lines. Acceptable at the target scale |
+
+### Acceptance criteria (baseline AC-5.x and AC-6.x as scoped by AMD-10, plus the user gate)
+
+| AC | Status | Evidence |
+|---|---|---|
+| AC-5.1 Golden tests for metrics | Met | reference dataset (M01–M19, M21) and unit tests (M20 via impacts) |
+| AC-5.2 Zero denominators give null | Met | unit tests per ratio |
+| AC-5.3 Identical `result_hash` on recompute | Met | `test_analysis_is_reproducible` |
+| AC-5.4 Injection-safe dimensions | Met | allowlist, 422 test, `slice_filter` test |
+| AC-5.5 100k-line analysis ≤ 15 s | Met (2.12 s locally) | benchmark |
+| AC-5.6 Charts with table alternatives, axe | Partly. Tables only (charts deferred). Axe scans run in the hardening phase | AMD-10 |
+| AC-6.1 Recall ≥ 95%, false positives ≤ 1 per control | Met on 5+5 seeds (5/5 detected, 0 false positives) | detection tests |
+| AC-6.2 Insufficient history gives no incidents | Met | reference and cancelled-only tests |
+| AC-6.3 Evidence hash reproducible | Met | hashes verified in tests |
+| AC-6.4 Verification statuses | Deferred to the hypothesis phase (AMD-10) | — |
+| AC-6.5 No demo literals or generator imports | Met | static tests |
+| User gate: reproducible, evidence-backed, numerically correct, tested | Met | above |
+
+### Commit hash and GitHub push status
+
+Recorded at the start of the next phase entry, and reported in the session summary.
+
+### Next-phase dependencies
+
+- The LLM and orchestration phase consumes `incidents`, `evidence_items` and `customer_segments` by revision.
+- The hypothesis catalog adds evidence tools (contribution and mix decomposition) on top of `queries.aggregate`.
+- The owner should confirm the CI results for the pushed commits.
