@@ -163,6 +163,22 @@ class CooperativeModel:
                 "alternatives_considered": alternatives[:24],
                 "caveats": [],
             }
+        if request.task == "explain_strategies":
+            explanations = []
+            for s in context["strategies"]:
+                cited = s["evidence"][0]
+                explanations.append(
+                    {
+                        "strategy": s["strategy"],
+                        "rationale": [
+                            {
+                                "text": f"{support} {placeholder(cited)}.",
+                                "evidence_refs": [cited["id"]],
+                            }
+                        ],
+                    }
+                )
+            return {"explanations": explanations}
         raise AssertionError(f"unexpected task {request.task}")
 
 

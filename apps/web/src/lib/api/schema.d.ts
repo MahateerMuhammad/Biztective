@@ -445,6 +445,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/businesses/{business_id}/investigations/{investigation_id}/recovery-plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Plans */
+        get: operations["list_plans_api_v1_businesses__business_id__investigations__investigation_id__recovery_plans_get"];
+        put?: never;
+        /** Create Plan */
+        post: operations["create_plan_api_v1_businesses__business_id__investigations__investigation_id__recovery_plans_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/businesses/{business_id}/investigations/{investigation_id}/retry": {
         parameters: {
             query?: never;
@@ -508,6 +526,125 @@ export interface paths {
         };
         /** Get Version */
         get: operations["get_version_api_v1_businesses__business_id__investigations__investigation_id__versions__version__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/businesses/{business_id}/recovery-plans/{plan_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Plan */
+        get: operations["get_plan_api_v1_businesses__business_id__recovery_plans__plan_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/businesses/{business_id}/recovery-plans/{plan_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Plan */
+        post: operations["approve_plan_api_v1_businesses__business_id__recovery_plans__plan_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/businesses/{business_id}/recovery-plans/{plan_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Plan */
+        post: operations["reject_plan_api_v1_businesses__business_id__recovery_plans__plan_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/businesses/{business_id}/recovery-plans/{plan_id}/request-changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request Plan Changes */
+        post: operations["request_plan_changes_api_v1_businesses__business_id__recovery_plans__plan_id__request_changes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/businesses/{business_id}/recovery-plans/{plan_id}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revise Plan */
+        post: operations["revise_plan_api_v1_businesses__business_id__recovery_plans__plan_id__revisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/businesses/{business_id}/recovery-plans/{plan_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Plan Versions */
+        get: operations["list_plan_versions_api_v1_businesses__business_id__recovery_plans__plan_id__versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/businesses/{business_id}/recovery-plans/{plan_id}/versions/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Plan Version */
+        get: operations["get_plan_version_api_v1_businesses__business_id__recovery_plans__plan_id__versions__version__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -649,6 +786,31 @@ export interface components {
             /** Timezone */
             timezone?: string | null;
         };
+        /** Constraints */
+        Constraints: {
+            /** Allowed Action Types */
+            allowed_action_types?: ("review_task" | "sales_hold" | "discount_policy" | "customer_contact" | "customer_offer")[];
+            /** Budget Amount */
+            budget_amount?: number | string | null;
+            /** Excluded Channels */
+            excluded_channels?: string[];
+            /** Excluded Regions */
+            excluded_regions?: string[];
+            /**
+             * Horizon Weeks
+             * @default 4
+             */
+            horizon_weeks: number;
+            /**
+             * Max Discount Pct
+             * @default 0.10
+             */
+            max_discount_pct: number | string;
+        };
+        /** CreatePlan */
+        CreatePlan: {
+            constraints?: components["schemas"]["Constraints"];
+        };
         /** CsrfResponse */
         CsrfResponse: {
             /** Csrf Token */
@@ -768,6 +930,20 @@ export interface components {
             /** Version */
             version: number;
         };
+        /**
+         * Decision
+         * @description Binds the decision to one exact version, its content hash and the paused checkpoint.
+         */
+        Decision: {
+            /** Checkpoint Id */
+            checkpoint_id: string;
+            /** Content Hash */
+            content_hash: string;
+            /** Reason */
+            reason?: string | null;
+            /** Version */
+            version: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -869,6 +1045,53 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /**
+         * PlanEdits
+         * @description A person's changes. Only fields that are present change; `budget_amount: null`
+         *     removes the budget. Unknown fields are refused (422).
+         */
+        PlanEdits: {
+            /** Allowed Action Types */
+            allowed_action_types?: ("review_task" | "sales_hold" | "discount_policy" | "customer_contact" | "customer_offer")[] | null;
+            /** Assumptions */
+            assumptions?: {
+                [key: string]: {
+                    [key: string]: components["schemas"]["Range"];
+                };
+            } | null;
+            /** Budget Amount */
+            budget_amount?: number | string | null;
+            /** Discounts */
+            discounts?: {
+                [key: string]: number | string;
+            } | null;
+            /** Excluded Channels */
+            excluded_channels?: string[] | null;
+            /** Excluded Regions */
+            excluded_regions?: string[] | null;
+            /** Horizon Weeks */
+            horizon_weeks?: number | null;
+            /** Max Discount Pct */
+            max_discount_pct?: number | string | null;
+            /** Selected Strategies */
+            selected_strategies?: string[] | null;
+            /** Targets */
+            targets?: {
+                [key: string]: string[];
+            } | null;
+        };
+        /**
+         * Range
+         * @description Low, mid and high values of one assumption.
+         */
+        Range: {
+            /** High */
+            high: number | string;
+            /** Low */
+            low: number | string;
+            /** Mid */
+            mid: number | string;
+        };
         /** RecordPage */
         RecordPage: {
             /** Items */
@@ -877,6 +1100,28 @@ export interface components {
             }[];
             /** Next Cursor */
             next_cursor: string | null;
+        };
+        /** RequestChanges */
+        RequestChanges: {
+            /** Checkpoint Id */
+            checkpoint_id: string;
+            /** Content Hash */
+            content_hash: string;
+            edits: components["schemas"]["PlanEdits"];
+            /** Reason */
+            reason?: string | null;
+            /** Version */
+            version: number;
+        };
+        /** Revision */
+        Revision: {
+            /** Content Hash */
+            content_hash: string;
+            edits: components["schemas"]["PlanEdits"];
+            /** Reason */
+            reason?: string | null;
+            /** Version */
+            version: number;
         };
         /** StartInvestigation */
         StartInvestigation: {
@@ -1888,6 +2133,78 @@ export interface operations {
             };
         };
     };
+    list_plans_api_v1_businesses__business_id__investigations__investigation_id__recovery_plans_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                investigation_id: string;
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_plan_api_v1_businesses__business_id__investigations__investigation_id__recovery_plans_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                investigation_id: string;
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePlan"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     retry_investigation_api_v1_businesses__business_id__investigations__investigation_id__retry_post: {
         parameters: {
             query?: never;
@@ -1997,6 +2314,261 @@ export interface operations {
             header?: never;
             path: {
                 investigation_id: string;
+                version: number;
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_plan_api_v1_businesses__business_id__recovery_plans__plan_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_plan_api_v1_businesses__business_id__recovery_plans__plan_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                plan_id: string;
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Decision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_plan_api_v1_businesses__business_id__recovery_plans__plan_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                plan_id: string;
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Decision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_plan_changes_api_v1_businesses__business_id__recovery_plans__plan_id__request_changes_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                plan_id: string;
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RequestChanges"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revise_plan_api_v1_businesses__business_id__recovery_plans__plan_id__revisions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                plan_id: string;
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Revision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_plan_versions_api_v1_businesses__business_id__recovery_plans__plan_id__versions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_plan_version_api_v1_businesses__business_id__recovery_plans__plan_id__versions__version__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
                 version: number;
                 business_id: string;
             };

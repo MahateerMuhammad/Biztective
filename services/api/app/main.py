@@ -31,6 +31,8 @@ from app.investigation.router import router as investigation_router
 from app.investigation.service import InvestigationRuntime, provider_from_settings
 from app.jobs.queue import JobType, LeasedJob
 from app.jobs.worker import Handler, run_worker
+from app.recovery.router import router as recovery_router
+from app.recovery.service import RecoveryRuntime
 from app.tenancy.router import router as tenancy_router
 
 MAX_JSON_BODY_BYTES = 1024 * 1024  # SEC-07
@@ -42,11 +44,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     configure_logging(settings.log_level)
     engine = create_engine(settings)
     sessionmaker = create_sessionmaker(engine)
-    investigations = InvestigationRuntime(settings, provider_from_settings(settings))
+    provider = provider_from_settings(settings)
+    investigations = InvestigationRuntime(settings, provider)
+    recovery = RecoveryRuntime(settings, provider)
     job_handlers: dict[JobType, Handler] = {
         "ingest_dataset": ingest_dataset,
         "analyze_dataset": analyze_dataset,
         "run_investigation": investigations.run,
+        "run_recovery_plan": recovery.run,
     }
 
     async def on_final_failure(job: LeasedJob, code: str) -> None:
@@ -54,6 +59,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await mark_dataset_failed(sessionmaker, job, code)
         elif job.type == "analyze_dataset":
             await mark_analysis_failed(sessionmaker, job, code)
+        elif job.type == "run_recovery_plan":
+            await recovery.mark_failed(sessionmaker, job, code)
         else:
             await investigations.mark_failed(sessionmaker, job, code)
 
@@ -90,6 +97,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.on_job_failure = on_final_failure
     app.state.job_handlers = job_handlers
     app.state.investigations = investigations
+    app.state.recovery = recovery
     app.state.migration_head = health.expected_migration_head()
 
     api = APIRouter(prefix="/api/v1")
@@ -99,6 +107,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.include_router(datasets_router)
     api.include_router(analytics_router)
     api.include_router(investigation_router)
+    api.include_router(recovery_router)
     api.include_router(audit_router)
     app.include_router(api)
     register_error_handlers(app)

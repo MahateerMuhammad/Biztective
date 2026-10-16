@@ -4,11 +4,12 @@ import { notFound } from "next/navigation";
 
 import { AutoRefresh } from "@/components/auto-refresh";
 import { QuestionForm } from "@/components/investigation/question-form";
+import { StartPlan } from "@/components/recovery/start-plan";
 import { VersionDiff } from "@/components/investigation/version-diff";
 import { Segments } from "@/components/segments";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { compareVersions, getBusiness, getInvestigation, listVersions } from "@/lib/api/server";
+import { compareVersions, getBusiness, getInvestigation, listPlans, listVersions } from "@/lib/api/server";
 import type { InvestigationDetail, InvestigationIncident, InvestigationStatus } from "@/lib/api/types";
 import { STATUS_LABELS, templateLabel } from "@/lib/format";
 
@@ -181,10 +182,11 @@ export default async function InvestigationPage({
 }: PageProps<"/businesses/[businessId]/investigations/[investigationId]">) {
   const { businessId, investigationId } = await params;
   const query = await searchParams;
-  const [business, investigation, versions] = await Promise.all([
+  const [business, investigation, versions, plans] = await Promise.all([
     getBusiness(businessId),
     getInvestigation(businessId, investigationId),
     listVersions(businessId, investigationId),
+    listPlans(businessId, investigationId),
   ]);
   if (!business || !investigation) notFound();
   const latest = versions.at(-1)?.version ?? 0;
@@ -238,6 +240,37 @@ export default async function InvestigationPage({
       ) : null}
 
       <Findings investigation={investigation} />
+
+      {investigation.status === "completed" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              <h2 className="text-base font-semibold">Recovery plan</h2>
+            </CardTitle>
+            <CardDescription>
+              Compare competing responses to the validated findings, set your budget and limits, and approve or reject. Nothing is
+              executed.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-2 text-sm">
+            {plans.length > 0 ? (
+              <ul className="grid gap-1" aria-label="Recovery plans">
+                {plans.map((p) => (
+                  <li key={p.id}>
+                    <Link href={`/businesses/${businessId}/recovery-plans/${p.id}`} className="underline-offset-4 hover:underline">
+                      Plan from {p.created_at.slice(0, 16).replace("T", " ")}: {p.status.replaceAll("_", " ")}
+                      {p.current_version ? ` (version ${p.current_version})` : ""}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {canAnswer && !plans.some((p) => ["queued", "running", "awaiting_decision", "approved"].includes(p.status)) ? (
+              <StartPlan businessId={businessId} investigationId={investigation.id} />
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <section className="grid gap-4" aria-labelledby="incidents-heading">
         <h2 id="incidents-heading" className="text-lg font-semibold">

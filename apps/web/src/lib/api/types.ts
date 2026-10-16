@@ -378,3 +378,142 @@ export interface VersionComparison {
     caveats: AddedRemoved;
   };
 }
+
+// ---------------------------------------------------------------- recovery plans (AMD-17)
+
+export type PlanStatus = "queued" | "running" | "awaiting_decision" | "approved" | "rejected" | "failed";
+export type ActionType = "review_task" | "sales_hold" | "discount_policy" | "customer_contact" | "customer_offer";
+
+export interface PlanAssumption {
+  unit: "ratio" | "money";
+  label: string;
+  low: string | null;
+  mid: string | null;
+  high: string | null;
+  source: "default" | "human" | "missing";
+}
+
+export interface PlanScenario {
+  benefit: string;
+  cost: string;
+  net: string;
+}
+
+export interface PlanEstimate {
+  kind: "estimate";
+  estimator_version: string;
+  scenarios: Record<"low" | "mid" | "high", PlanScenario>;
+  break_even: { variable: string | null; value: string | null; reason: string | null };
+}
+
+export interface PlanObserved {
+  name: string;
+  value: string | null;
+  unit: string;
+  evidence_id: string;
+  field: string;
+  kind: "observed";
+}
+
+export interface PlanStrategy {
+  id: string;
+  strategy: string;
+  title: string;
+  summary: string;
+  rank: number;
+  incident: { id: string; key: string; rank: number };
+  hypothesis: { id: string; template: string; status: string; confidence: string | null };
+  action_types: ActionType[];
+  risky_action_types: ActionType[];
+  requirements: string[];
+  tradeoffs: string[];
+  evidence: string[];
+  observed: PlanObserved[];
+  eligibility: { eligible: boolean; reasons: string[] };
+  assumptions: Record<string, PlanAssumption>;
+  targeting?: { eligible_customers: number; source: "default" | "human"; selected: string[] };
+  discount?: string;
+  estimate_status: "computed" | "missing_assumptions" | "ineligible" | "not_estimated";
+  estimate: PlanEstimate | null;
+  warnings: string[];
+  rationale: { source: "deterministic" | "llm"; items: { text: string; evidence_refs: string[] }[] };
+  rationale_segments: Segment[][];
+}
+
+export interface PlanConstraints {
+  budget_amount: string | null;
+  max_discount_pct: string;
+  horizon_weeks: number;
+  allowed_action_types: ActionType[];
+  excluded_regions: string[];
+  excluded_channels: string[];
+}
+
+export interface PlanContent {
+  schema: string;
+  catalog_version: string;
+  estimator_version: string;
+  currency: string;
+  constraints: PlanConstraints;
+  strategies: PlanStrategy[];
+  selected: string[];
+  totals: { kind: "estimate"; scenarios: Record<"low" | "mid" | "high", PlanScenario>; strategies_without_estimate: number } | null;
+}
+
+export interface PlanIssue {
+  code: string;
+  strategy?: string;
+  field?: string;
+  action?: string;
+  count?: string;
+  cost?: string;
+  template?: string;
+}
+
+export interface PlanVersion {
+  version: number;
+  content_hash: string;
+  intact: boolean;
+  valid: boolean;
+  validation: { valid: boolean; errors: PlanIssue[]; warnings: PlanIssue[] };
+  caused_by_decision_id: string | null;
+  created_by: string | null;
+  created_at: string;
+  content: PlanContent;
+}
+
+export interface PlanDecisionView {
+  id: string;
+  decision: "approve" | "reject" | "request_changes" | "revise";
+  version: number;
+  content_hash: string;
+  decided_by: Person;
+  decided_role: string;
+  reason: string | null;
+  edits: Record<string, unknown> | null;
+  created_at: string;
+  applied_at: string | null;
+  outcome: "applied" | "refused" | null;
+  refusal: string | null;
+}
+
+export interface PlanSummary {
+  id: string;
+  investigation_id: string;
+  investigation_version: number;
+  status: PlanStatus;
+  current_version: number;
+  approved_version: number | null;
+  error_code: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PlanDetail extends PlanSummary {
+  current: PlanVersion | null;
+  awaiting: { version: number; content_hash: string; checkpoint_id: string; can_approve: boolean } | null;
+  approved: { version: number; content_hash: string; approved_by: Person; approved_at: string | null } | null;
+  decisions: PlanDecisionView[];
+  catalog: { version: string; action_types: Record<ActionType, { risky: boolean; label: string }> };
+  execution: { available: boolean };
+}

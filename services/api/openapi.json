@@ -258,6 +258,93 @@
         "title": "BusinessUpdate",
         "type": "object"
       },
+      "Constraints": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed_action_types": {
+            "items": {
+              "enum": [
+                "review_task",
+                "sales_hold",
+                "discount_policy",
+                "customer_contact",
+                "customer_offer"
+              ],
+              "type": "string"
+            },
+            "maxItems": 5,
+            "title": "Allowed Action Types",
+            "type": "array"
+          },
+          "budget_amount": {
+            "anyOf": [
+              {
+                "maximum": 1000000000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budget Amount"
+          },
+          "excluded_channels": {
+            "items": {
+              "pattern": "^[A-Za-z0-9 _.\\-]{1,64}$",
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Excluded Channels",
+            "type": "array"
+          },
+          "excluded_regions": {
+            "items": {
+              "pattern": "^[A-Za-z0-9 _.\\-]{1,64}$",
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Excluded Regions",
+            "type": "array"
+          },
+          "horizon_weeks": {
+            "default": 4,
+            "maximum": 12.0,
+            "minimum": 1.0,
+            "title": "Horizon Weeks",
+            "type": "integer"
+          },
+          "max_discount_pct": {
+            "anyOf": [
+              {
+                "maximum": 0.5,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "default": "0.10",
+            "title": "Max Discount Pct"
+          }
+        },
+        "title": "Constraints",
+        "type": "object"
+      },
+      "CreatePlan": {
+        "additionalProperties": false,
+        "properties": {
+          "constraints": {
+            "$ref": "#/components/schemas/Constraints"
+          }
+        },
+        "title": "CreatePlan",
+        "type": "object"
+      },
       "CsrfResponse": {
         "properties": {
           "csrf_token": {
@@ -685,6 +772,48 @@
         "title": "DatasetOut",
         "type": "object"
       },
+      "Decision": {
+        "additionalProperties": false,
+        "description": "Binds the decision to one exact version, its content hash and the paused checkpoint.",
+        "properties": {
+          "checkpoint_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Checkpoint Id",
+            "type": "string"
+          },
+          "content_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "version": {
+            "maximum": 32767.0,
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "content_hash",
+          "checkpoint_id"
+        ],
+        "title": "Decision",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1002,6 +1131,249 @@
         "title": "Page[IssueOut]",
         "type": "object"
       },
+      "PlanEdits": {
+        "additionalProperties": false,
+        "description": "A person's changes. Only fields that are present change; `budget_amount: null`\nremoves the budget. Unknown fields are refused (422).",
+        "properties": {
+          "allowed_action_types": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    "review_task",
+                    "sales_hold",
+                    "discount_policy",
+                    "customer_contact",
+                    "customer_offer"
+                  ],
+                  "type": "string"
+                },
+                "maxItems": 5,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowed Action Types"
+          },
+          "assumptions": {
+            "anyOf": [
+              {
+                "maxProperties": 20,
+                "patternProperties": {
+                  "^S_[A-Z_]{1,40}:[A-Za-z0-9_|:. \\-]{1,200}$": {
+                    "patternProperties": {
+                      "^[a-z_]{1,40}$": {
+                        "$ref": "#/components/schemas/Range"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assumptions"
+          },
+          "budget_amount": {
+            "anyOf": [
+              {
+                "maximum": 1000000000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budget Amount"
+          },
+          "discounts": {
+            "anyOf": [
+              {
+                "maxProperties": 20,
+                "patternProperties": {
+                  "^S_[A-Z_]{1,40}:[A-Za-z0-9_|:. \\-]{1,200}$": {
+                    "anyOf": [
+                      {
+                        "maximum": 0.5,
+                        "minimum": 0.0,
+                        "type": "number"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  }
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discounts"
+          },
+          "excluded_channels": {
+            "anyOf": [
+              {
+                "items": {
+                  "pattern": "^[A-Za-z0-9 _.\\-]{1,64}$",
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excluded Channels"
+          },
+          "excluded_regions": {
+            "anyOf": [
+              {
+                "items": {
+                  "pattern": "^[A-Za-z0-9 _.\\-]{1,64}$",
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excluded Regions"
+          },
+          "horizon_weeks": {
+            "anyOf": [
+              {
+                "maximum": 12.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Horizon Weeks"
+          },
+          "max_discount_pct": {
+            "anyOf": [
+              {
+                "maximum": 0.5,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Discount Pct"
+          },
+          "selected_strategies": {
+            "anyOf": [
+              {
+                "items": {
+                  "pattern": "^S_[A-Z_]{1,40}:[A-Za-z0-9_|:. \\-]{1,200}$",
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Strategies"
+          },
+          "targets": {
+            "anyOf": [
+              {
+                "maxProperties": 20,
+                "patternProperties": {
+                  "^S_[A-Z_]{1,40}:[A-Za-z0-9_|:. \\-]{1,200}$": {
+                    "items": {
+                      "maxLength": 64,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "maxItems": 1000,
+                    "type": "array"
+                  }
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targets"
+          }
+        },
+        "title": "PlanEdits",
+        "type": "object"
+      },
+      "Range": {
+        "additionalProperties": false,
+        "description": "Low, mid and high values of one assumption.",
+        "properties": {
+          "high": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "High"
+          },
+          "low": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Low"
+          },
+          "mid": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Mid"
+          }
+        },
+        "required": [
+          "low",
+          "mid",
+          "high"
+        ],
+        "title": "Range",
+        "type": "object"
+      },
       "RecordPage": {
         "properties": {
           "items": {
@@ -1041,6 +1413,89 @@
           "next_cursor"
         ],
         "title": "RecordPage",
+        "type": "object"
+      },
+      "RequestChanges": {
+        "additionalProperties": false,
+        "properties": {
+          "checkpoint_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Checkpoint Id",
+            "type": "string"
+          },
+          "content_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "edits": {
+            "$ref": "#/components/schemas/PlanEdits"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "version": {
+            "maximum": 32767.0,
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "content_hash",
+          "checkpoint_id",
+          "edits"
+        ],
+        "title": "RequestChanges",
+        "type": "object"
+      },
+      "Revision": {
+        "additionalProperties": false,
+        "properties": {
+          "content_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "edits": {
+            "$ref": "#/components/schemas/PlanEdits"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "version": {
+            "maximum": 32767.0,
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "content_hash",
+          "edits"
+        ],
+        "title": "Revision",
         "type": "object"
       },
       "StartInvestigation": {
@@ -3056,6 +3511,139 @@
         ]
       }
     },
+    "/api/v1/businesses/{business_id}/investigations/{investigation_id}/recovery-plans": {
+      "get": {
+        "operationId": "list_plans_api_v1_businesses__business_id__investigations__investigation_id__recovery_plans_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "investigation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Investigation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "business_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Business Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Plans Api V1 Businesses  Business Id  Investigations  Investigation Id  Recovery Plans Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Plans",
+        "tags": [
+          "recovery"
+        ]
+      },
+      "post": {
+        "operationId": "create_plan_api_v1_businesses__business_id__investigations__investigation_id__recovery_plans_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "investigation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Investigation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "business_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Business Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "minLength": 8,
+                  "pattern": "^[A-Za-z0-9_-]+$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePlan"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Plan",
+        "tags": [
+          "recovery"
+        ]
+      }
+    },
     "/api/v1/businesses/{business_id}/investigations/{investigation_id}/retry": {
       "post": {
         "operationId": "retry_investigation_api_v1_businesses__business_id__investigations__investigation_id__retry_post",
@@ -3311,6 +3899,500 @@
         "summary": "Get Version",
         "tags": [
           "investigations"
+        ]
+      }
+    },
+    "/api/v1/businesses/{business_id}/recovery-plans/{plan_id}": {
+      "get": {
+        "operationId": "get_plan_api_v1_businesses__business_id__recovery_plans__plan_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "business_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Business Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Plan Api V1 Businesses  Business Id  Recovery Plans  Plan Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Plan",
+        "tags": [
+          "recovery"
+        ]
+      }
+    },
+    "/api/v1/businesses/{business_id}/recovery-plans/{plan_id}/approve": {
+      "post": {
+        "operationId": "approve_plan_api_v1_businesses__business_id__recovery_plans__plan_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "business_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Business Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "minLength": 8,
+                  "pattern": "^[A-Za-z0-9_-]+$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Decision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Plan",
+        "tags": [
+          "recovery"
+        ]
+      }
+    },
+    "/api/v1/businesses/{business_id}/recovery-plans/{plan_id}/reject": {
+      "post": {
+        "operationId": "reject_plan_api_v1_businesses__business_id__recovery_plans__plan_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "business_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Business Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "minLength": 8,
+                  "pattern": "^[A-Za-z0-9_-]+$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Decision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject Plan",
+        "tags": [
+          "recovery"
+        ]
+      }
+    },
+    "/api/v1/businesses/{business_id}/recovery-plans/{plan_id}/request-changes": {
+      "post": {
+        "operationId": "request_plan_changes_api_v1_businesses__business_id__recovery_plans__plan_id__request_changes_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "business_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Business Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "minLength": 8,
+                  "pattern": "^[A-Za-z0-9_-]+$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestChanges"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request Plan Changes",
+        "tags": [
+          "recovery"
+        ]
+      }
+    },
+    "/api/v1/businesses/{business_id}/recovery-plans/{plan_id}/revisions": {
+      "post": {
+        "operationId": "revise_plan_api_v1_businesses__business_id__recovery_plans__plan_id__revisions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "business_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Business Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "minLength": 8,
+                  "pattern": "^[A-Za-z0-9_-]+$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Revision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revise Plan",
+        "tags": [
+          "recovery"
+        ]
+      }
+    },
+    "/api/v1/businesses/{business_id}/recovery-plans/{plan_id}/versions": {
+      "get": {
+        "operationId": "list_plan_versions_api_v1_businesses__business_id__recovery_plans__plan_id__versions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "business_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Business Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Plan Versions Api V1 Businesses  Business Id  Recovery Plans  Plan Id  Versions Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Plan Versions",
+        "tags": [
+          "recovery"
+        ]
+      }
+    },
+    "/api/v1/businesses/{business_id}/recovery-plans/{plan_id}/versions/{version}": {
+      "get": {
+        "operationId": "get_plan_version_api_v1_businesses__business_id__recovery_plans__plan_id__versions__version__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "business_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Business Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Plan Version Api V1 Businesses  Business Id  Recovery Plans  Plan Id  Versions  Version  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Plan Version",
+        "tags": [
+          "recovery"
         ]
       }
     },

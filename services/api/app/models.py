@@ -519,3 +519,59 @@ class InvestigationVersion(Base):
     snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB)
     snapshot_hash: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RecoveryPlan(Base):
+    __tablename__ = "recovery_plans"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid7)
+    business_id: Mapped[uuid.UUID] = mapped_column()
+    investigation_id: Mapped[uuid.UUID] = mapped_column()
+    investigation_version: Mapped[int] = mapped_column(SmallInteger)
+    status: Mapped[str] = mapped_column(Text)
+    current_version: Mapped[int] = mapped_column(SmallInteger, default=0)
+    approved_version: Mapped[int | None] = mapped_column(SmallInteger)
+    initial_constraints: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    graph_version: Mapped[str] = mapped_column(Text)
+    catalog_version: Mapped[str] = mapped_column(Text)
+    error_code: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[uuid.UUID] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RecoveryPlanVersion(Base):
+    __tablename__ = "recovery_plan_versions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid7)
+    business_id: Mapped[uuid.UUID] = mapped_column()
+    plan_id: Mapped[uuid.UUID] = mapped_column()
+    version: Mapped[int] = mapped_column(SmallInteger)
+    content: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    content_hash: Mapped[str] = mapped_column(Text)
+    valid: Mapped[bool] = mapped_column(Boolean)
+    validation: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    caused_by_decision_id: Mapped[uuid.UUID | None] = mapped_column()
+    created_by: Mapped[uuid.UUID | None] = mapped_column()
+    checkpoint_id: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PlanDecision(Base):
+    __tablename__ = "plan_decisions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid7)
+    business_id: Mapped[uuid.UUID] = mapped_column()
+    plan_id: Mapped[uuid.UUID] = mapped_column()
+    version: Mapped[int] = mapped_column(SmallInteger)
+    content_hash: Mapped[str] = mapped_column(Text)
+    decision: Mapped[str] = mapped_column(Text)
+    decided_by: Mapped[uuid.UUID] = mapped_column()
+    decided_role: Mapped[str] = mapped_column(Text)
+    reason: Mapped[str | None] = mapped_column(Text)
+    edits: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
+    checkpoint_id: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    outcome: Mapped[str | None] = mapped_column(Text)
+    refusal: Mapped[str | None] = mapped_column(Text)

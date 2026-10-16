@@ -15,6 +15,8 @@ import type {
   InvestigationSummary,
   IssuePage,
   Me,
+  PlanDetail,
+  PlanSummary,
   ProductRow,
   SegmentSummary,
   VersionComparison,
@@ -161,5 +163,18 @@ export async function listVersions(businessId: string, investigationId: string):
 export function compareVersions(businessId: string, investigationId: string, from: number, to: number) {
   return analyticsGet<VersionComparison>(
     `${investigationPath(businessId, investigationId)}/versions/compare?from_version=${from}&to_version=${to}`,
+  );
+}
+
+export async function listPlans(businessId: string, investigationId: string): Promise<PlanSummary[]> {
+  const page = await analyticsGet<{ items: PlanSummary[] }>(
+    `${investigationPath(businessId, investigationId)}/recovery-plans`,
+  );
+  return page?.items ?? [];
+}
+
+export function getPlan(businessId: string, planId: string) {
+  return analyticsGet<PlanDetail>(
+    `/api/v1/businesses/${encodeURIComponent(businessId)}/recovery-plans/${encodeURIComponent(planId)}`,
   );
 }

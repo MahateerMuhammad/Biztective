@@ -12,12 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Job
 
-JobType = Literal["ingest_dataset", "analyze_dataset", "run_investigation"]
+JobType = Literal["ingest_dataset", "analyze_dataset", "run_investigation", "run_recovery_plan"]
 LEASE = timedelta(seconds=120)
 MAX_ATTEMPTS: dict[JobType, int] = {
     "ingest_dataset": 3,
     "analyze_dataset": 3,
     "run_investigation": 3,
+    "run_recovery_plan": 3,
 }
 
 

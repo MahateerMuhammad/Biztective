@@ -20,6 +20,9 @@ class Permission(StrEnum):
     INVESTIGATION_READ = "investigation:read"
     INVESTIGATION_RUN = "investigation:run"
     HITL_ANSWER = "hitl:answer"
+    PLAN_CREATE = "plan:create"
+    PLAN_DECIDE = "plan:decide"  # reject, request changes, revise (AMD-17)
+    PLAN_APPROVE = "plan:approve"  # owner only
 
 
 ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
@@ -34,6 +37,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.INVESTIGATION_READ,
             Permission.INVESTIGATION_RUN,
             Permission.HITL_ANSWER,
+            Permission.PLAN_CREATE,
+            Permission.PLAN_DECIDE,
         }
     ),
     "viewer": frozenset(

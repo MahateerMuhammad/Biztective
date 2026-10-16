@@ -28,6 +28,9 @@ EXPECTED_TABLES = {
     "findings",
     "hypotheses",
     "human_inputs",
+    "recovery_plans",
+    "recovery_plan_versions",
+    "plan_decisions",
     "hypothesis_evaluations",
     "idempotency_keys",
     "incidents",
@@ -141,7 +144,7 @@ def test_migrations_upgrade_downgrade_upgrade(admin_url: str, app_password: str)
             command.downgrade(config, target)
             command.upgrade(config, "head")
         with engine.connect() as conn:
-            assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "0005"
+            assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "0006"
             assert conn.scalar(text("SELECT count(*) FROM analysis_configs")) == 1
     finally:
         engine.dispose()

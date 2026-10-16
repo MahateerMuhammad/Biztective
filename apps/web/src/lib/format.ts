@@ -97,3 +97,32 @@ export function templateLabel(template: string | null | undefined): string {
   if (!template) return "None";
   return TEMPLATE_LABELS[template] ?? template;
 }
+
+/** Plan validation codes in words (AMD-17). */
+export const PLAN_ISSUES: Record<string, string> = {
+  no_strategy_selected: "Select at least one strategy.",
+  unknown_strategy: "A selected strategy is not part of this plan.",
+  strategy_ineligible: "A selected strategy is not supported by the evidence (see its eligibility).",
+  action_type_not_allowed: "A selected strategy needs an action type you have not permitted.",
+  missing_assumption: "A selected strategy needs a cost estimate from you.",
+  budget_missing: "Set a budget: the selected strategies have a cost.",
+  budget_exceeded: "The selected strategies can cost more than the budget (high scenario).",
+  discount_exceeds_max: "A discount is above the maximum you allowed.",
+  invalid_customer_targeting: "Some targeted customers are not eligible or are excluded.",
+  no_targets: "A customer strategy has no customers selected.",
+  overlapping_scope: "Several selected strategies address the same problem; their effects may overlap.",
+  non_positive_contribution_margin: "The affected sales earn no contribution; see the strategy's limits.",
+};
+
+export const INELIGIBLE: Record<string, string> = {
+  missing_cost_data: "product costs are missing, so its cost cannot be computed",
+  no_excess_discount: "there is no excess discount to remove",
+  no_customer_activity: "no customer activity was found in the affected slice",
+};
+
+export const BREAK_EVEN: Record<string, string> = {
+  above_one: "does not pay back even at full success",
+  offer_exceeds_contribution: "never pays back: the offer costs more than an order contributes",
+  no_recoverable_amount: "nothing measurable to recover",
+  not_estimated: "not estimated",
+};

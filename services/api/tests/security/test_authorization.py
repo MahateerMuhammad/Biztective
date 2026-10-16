@@ -117,6 +117,7 @@ def _url(path: str, business_id: uuid.UUID, dataset_id: uuid.UUID) -> str:
         .replace("{investigation_id}", str(uuid.UUID(int=1)))
         .replace("{evidence_id}", str(uuid.UUID(int=1)))
         .replace("{clarification_id}", str(uuid.UUID(int=1)))
+        .replace("{plan_id}", str(uuid.UUID(int=1)))
         .replace("{version}", "1")
     )
 
@@ -154,7 +155,7 @@ async def test_role_permission_matrix(
             assert response.status_code < 500, label
             if method == "GET":
                 # 404: a random resource id, or no analysis ever requested for the dataset.
-                random_ids = ("{incident_id}", "{investigation_id}", "{evidence_id}")
+                random_ids = ("{incident_id}", "{investigation_id}", "{evidence_id}", "{plan_id}")
                 not_found_ok = any(p in path for p in random_ids) or path.endswith("/analysis")
                 allowed = {200, 404, 409} if not_found_ok else {200, 409}
                 assert response.status_code in allowed, label

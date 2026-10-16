@@ -24,13 +24,15 @@ from tests.investigation.support import (
     signature,
     start,
 )
+from tests.recovery.support import binding, completed, decide, decided, planned
+from tests.recovery.support import detail as detail_plan
 
 WORKER = """
 import asyncio
+import importlib
 import os
 from pathlib import Path
 
-from app.investigation.graph import Nodes
 from app.main import create_app
 from tests.conftest import make_settings
 from tests.helpers import run_jobs
@@ -41,7 +43,8 @@ async def main():
         async def pause(self, state):
             Path(marker).write_text("ready", encoding="utf-8")
             await asyncio.Event().wait()
-        setattr(Nodes, os.environ.get("ROOT_RESTART_NODE", "verify_evidence"), pause)
+        graph = importlib.import_module(os.environ["ROOT_RESTART_GRAPH"])
+        setattr(graph.Nodes, os.environ.get("ROOT_RESTART_NODE", "verify_evidence"), pause)
     settings = make_settings(
         os.environ["ROOT_RESTART_DB_URL"], llm_provider="disabled", anthropic_api_key=None
     )
@@ -54,11 +57,15 @@ asyncio.run(main())
 
 
 async def spawn_worker(
-    database_url: str, marker: Path | None = None, node: str = "verify_evidence"
+    database_url: str,
+    marker: Path | None = None,
+    node: str = "verify_evidence",
+    graph: str = "app.investigation.graph",
 ) -> asyncio.subprocess.Process:
     environment = dict(os.environ)
     environment["ROOT_RESTART_DB_URL"] = database_url
     environment["ROOT_RESTART_NODE"] = node
+    environment["ROOT_RESTART_GRAPH"] = graph
     environment.pop("ROOT_RESTART_MARKER", None)
     if marker is not None:
         environment["ROOT_RESTART_MARKER"] = str(marker)
@@ -223,3 +230,73 @@ async def test_sigkill_while_applying_an_answer_resumes_exactly_once(
     assert (applied, first) == (1, "applied")
     final = await finish(app, client, tenant.business_id, after)
     assert final["status"] == "completed"
+
+
+async def test_sigkill_while_applying_an_approval_applies_it_exactly_once(
+    app: FastAPI,
+    client: httpx.AsyncClient,
+    owner_engine: Engine,
+    db_urls: DatabaseUrls,
+    tmp_path: Path,
+) -> None:
+    """Approval stored → a worker resumes the plan graph and is killed inside
+    `apply_decision` → a fresh process resumes the paused checkpoint and approves once."""
+    tenant = create_tenant(owner_engine, "alice")
+    assert (await login(client, tenant.email)).status_code == 200
+    body = await completed(app, client, tenant.business_id)
+    proposed = await planned(app, client, tenant.business_id, body["id"])
+    instance = proposed["current"]["content"]["selected"][0]
+    valid = await decided(
+        app,
+        client,
+        tenant.business_id,
+        proposed,
+        "request-changes",
+        edits={
+            "assumptions": {instance: {"review_cost": {"low": "1", "mid": "2", "high": "3"}}},
+            "budget_amount": "10",
+        },
+    )
+    assert valid["current"]["valid"] is True
+    response = await decide(client, tenant.business_id, valid["id"], "approve", binding(valid))
+    assert response.status_code == 202
+
+    marker = tmp_path / "worker_paused"
+    killed = await spawn_worker(db_urls.app, marker, "apply_decision", "app.recovery.graph")
+    try:
+        async with asyncio.timeout(30):
+            while not marker.exists():
+                assert killed.returncode is None, "Worker exited before applying the approval."
+                await asyncio.sleep(0.05)
+    finally:
+        if killed.returncode is None:
+            killed.kill()
+        await asyncio.wait_for(killed.communicate(), timeout=5)
+    assert killed.returncode is not None
+    assert killed.returncode < 0
+    assert (await detail_plan(client, tenant.business_id, valid["id"]))["status"] == "running"
+
+    with owner_engine.begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE jobs SET lease_expires_at = now() - interval '1 second' "
+                "WHERE status = 'running'"
+            )
+        )
+    restarted = await spawn_worker(db_urls.app)
+    try:
+        await asyncio.wait_for(restarted.communicate(), timeout=60)
+        assert restarted.returncode == 0, "Fresh worker must apply the approval and finish."
+    finally:
+        if restarted.returncode is None:
+            restarted.kill()
+            await restarted.communicate()
+    after = await detail_plan(client, tenant.business_id, valid["id"])
+    assert after["status"] == "approved"
+    assert after["approved"]["version"] == valid["current"]["version"]
+    assert after["approved"]["content_hash"] == valid["current"]["content_hash"]
+    with owner_engine.connect() as conn:
+        rows = conn.execute(
+            text("SELECT decision, outcome FROM plan_decisions ORDER BY created_at")
+        ).all()
+    assert [tuple(r) for r in rows] == [("request_changes", "applied"), ("approve", "applied")]
