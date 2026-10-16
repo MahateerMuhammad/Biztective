@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     frontend_origin: str
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     db_pool_size: int = Field(default=5, ge=1, le=50)
+    worker_enabled: bool = True
+    worker_poll_seconds: float = Field(default=1.0, gt=0, le=60)
 
     @field_validator("database_url")
     @classmethod

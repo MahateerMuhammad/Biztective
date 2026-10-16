@@ -102,6 +102,7 @@ def make_settings(database_url: str, **overrides: object) -> Settings:
         "session_secret": SecretStr(TEST_SESSION_SECRET),
         "frontend_origin": FRONTEND_ORIGIN,
         "log_level": "INFO",
+        "worker_enabled": False,  # tests run jobs explicitly (tests/helpers.run_jobs)
     }
     values.update(overrides)
     return Settings.model_validate(values)
@@ -133,6 +134,6 @@ def clean_db(owner_engine: Engine) -> Iterator[None]:
         conn.execute(
             text(
                 "TRUNCATE users, sessions, auth_attempts, businesses, memberships, "
-                "datasets, audit_log CASCADE"
+                "datasets, audit_log, jobs CASCADE"
             )
         )

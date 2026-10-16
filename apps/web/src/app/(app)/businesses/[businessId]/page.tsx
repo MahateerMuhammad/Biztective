@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -43,6 +44,14 @@ export default async function BusinessPage({ params }: PageProps<"/businesses/[b
           <CardTitle>
             <h2 className="text-base font-semibold">Datasets</h2>
           </CardTitle>
+          {business.role !== "viewer" ? (
+            <Link
+              href={`/businesses/${businessId}/datasets/new`}
+              className="text-sm font-medium underline-offset-4 hover:underline"
+            >
+              Upload dataset
+            </Link>
+          ) : null}
         </CardHeader>
         <CardContent>
           {datasets.items.length === 0 ? (
@@ -54,16 +63,23 @@ export default async function BusinessPage({ params }: PageProps<"/businesses/[b
                 <tr className="border-b">
                   <th scope="col" className="py-2 font-medium">Version</th>
                   <th scope="col" className="py-2 font-medium">Status</th>
-                  <th scope="col" className="py-2 font-medium">Sales rows</th>
+                  <th scope="col" className="py-2 font-medium">Order lines</th>
                   <th scope="col" className="py-2 font-medium">Date range</th>
                 </tr>
               </thead>
               <tbody>
                 {datasets.items.map((dataset) => (
                   <tr key={dataset.id} className="border-b last:border-0">
-                    <td className="py-2">v{dataset.version}</td>
-                    <td className="py-2">{dataset.status}</td>
-                    <td className="py-2">{dataset.sales_rows ?? "—"}</td>
+                    <td className="py-2">
+                      <Link
+                        href={`/businesses/${businessId}/datasets/${dataset.id}`}
+                        className="underline-offset-4 hover:underline"
+                      >
+                        v{dataset.version}
+                      </Link>
+                    </td>
+                    <td className="py-2">{dataset.status.replace("_", " ")}</td>
+                    <td className="py-2">{dataset.orders_rows?.toLocaleString("en-US") ?? "—"}</td>
                     <td className="py-2">
                       {dataset.date_min && dataset.date_max
                         ? `${dataset.date_min} – ${dataset.date_max}`

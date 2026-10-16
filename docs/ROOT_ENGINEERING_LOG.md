@@ -386,3 +386,220 @@ Environment: macOS, Python 3.14.8, Node 24.22.0, and a **disposable PostgreSQL 1
 | AC-2.6 No unused dependencies | Met. Every runtime dependency is imported or invoked (uvicorn CLI, psycopg driver) | review |
 | AC-3.1 to AC-3.6 (moved by AMD-2) | Met for all existing routes | security test table |
 | User gate: reproducible start, connects to PostgreSQL, secure auth, tenant isolation, all tests pass | Met (Compose verification below) | above |
+
+---
+
+## Phase 3 — Data ingestion and validation
+
+- **Date:** 2026-10-16
+- **Numbering:** user Phase 3 is the baseline Phase 4 scope plus the user's additions (AMD-8).
+
+### Phase 2 bookkeeping carried forward
+
+- Phase 2 commit `0881d4bb9682b63d87e978203611b02182a2881b` was pushed to `origin/main` and verified with `git ls-remote` (local = remote).
+- **GitHub Actions result for `0881d4b`: not observed.** The repository is private, the GitHub CLI is not installed, and no API credentials were used. Reading the keychain git credential was deliberately avoided. AC-2.1 and AC-2.2 are therefore met **locally only**, and their CI half remains **unverified** until the repository owner checks the Actions tab.
+
+### Objective and scope
+
+Build secure, efficient, reproducible ingestion of four related datasets (`orders.csv`, `products.csv`, `customers.csv`, `returns.csv`):
+
+- business-scoped uploads with strict file checks
+- canonical typed tables with primary and foreign keys
+- column-mapping proposals with a human confirmation checkpoint
+- row and set-based validation with explained rejections
+- batched, transactional persistence
+- explicit dataset versioning with duplicate and idempotency semantics
+- currency and time interpretation, profiling and provenance
+- record retrieval, formula-safe CSV export, and an upload UI with a data-quality report
+
+AI-generated conclusions were explicitly out of scope, and no LLM or agent code was written.
+
+### Technical decisions and reasons
+
+1. **Synchronous request checks, asynchronous ingestion.** The request does only byte-level work (one chunked pass: size, SHA-256, strict incremental UTF-8, NUL and binary signatures, header, mapping), then stores the files and queues a job. Heavy parsing runs in the Postgres-backed job queue (ADR-003, implemented now), so HTTP latency stays flat (0.16 s for 20k lines).
+2. **One transaction per ingestion, staging through `COPY`.** Rows stream into `ON COMMIT DROP` temp tables. Cross-row rules run as SQL (duplicates, references, cumulative returns with window functions), then `INSERT … SELECT` loads the canonical tables. Any failure rolls back everything; there is never a partially loaded dataset.
+3. **RLS kept intact.** PostgreSQL forbids `COPY FROM` into RLS tables, so issues also go through a temp table. The app role still never gets BYPASSRLS (AMD-9).
+4. **Mapping never guesses.** Exact header matches are automatic. Synonym and ambiguous matches block ingestion until a human confirms each one (`awaiting_mapping`). Missing required columns are rejected immediately, and the accepted header names are listed.
+5. **PII never stored.** Personal-data columns are stripped from the stored bytes at upload. A row whose field count is wrong can't be split safely, so it becomes an empty line and is reported as V-010.
+6. **Strict, explained value parsing.** ISO-8601 only (no day/month guessing), DST gaps rejected, DST overlaps flagged, exact decimals, bounded quantities. Every rejection carries a code, a message and a sanitised excerpt.
+7. **Versioning semantics.**
+   - A per-business advisory lock serialises idempotency replay, duplicate detection and version allocation. This makes concurrent uploads safe (tested).
+   - Identical content is refused with 409, naming the version. A corrected re-upload creates version N+1.
+   - Terminal versions are immutable (trigger plus grants).
+8. **Time.** Each dataset snapshots `source_timezone` and the business time zone at upload, so later business-setting changes cannot reinterpret stored data.
+9. **Bounded resources.**
+   - Limits: 25 MB per file, 60 MB per request (enforced by streaming), row limits per file, 10,000-character field limit, 100 columns.
+   - Issue rows stored are capped per code (exact counts are kept).
+   - Exports are built in a spooled temp file.
+   - CSVs are stream-decoded: an earlier version decoded whole files first. Measured in the benchmark, the change cut peak Python memory about 5×.
+10. **Authorization before parsing.** The upload handler reads the multipart body only after `RequirePermission`, so unauthenticated or unauthorized clients cannot make the server spool files.
+
+### Files created / changed
+
+| Area | Files |
+|---|---|
+| Migration | `services/api/migrations/versions/0002_ingestion.py` (new tables, statuses, triggers, RLS, grants, reversible downgrade) |
+| Ingestion | `app/ingestion/{contract,mapping,parsing,upload,pipeline,export}.py` |
+| Jobs | `app/jobs/{queue,worker}.py`, worker started in `app/main.py` lifespan |
+| API | `app/datasets/{router,service}.py` (upload, mapping, detail, issues, records, export). `app/tenancy/router.py` (`PATCH` business). `app/tenancy/permissions.py` (`dataset:upload`, `business:update`). `app/core/{errors,middleware,config,db}.py` (error lists, per-route body limit, worker settings, business RLS context). `app/models.py` |
+| Tooling | `scripts/generate_dataset.py` (seeded generator, FR-29), `scripts/__init__.py`, `openapi.json` regenerated, `pyproject.toml` / `uv.lock` (`python-multipart`, perf marker, scoped lint exceptions) |
+| Tests | `tests/integration/{test_ingestion,test_upload_guards}.py`, `tests/security/test_ingestion_isolation.py`, `tests/unit/test_ingestion_units.py`, `tests/perf/test_ingestion_benchmark.py`, `tests/ingestion_fixtures.py`. Updated: `conftest.py`, `helpers.py`, authorization matrix (now covers unsafe methods), database controls, migration test |
+| Frontend | `src/app/(app)/businesses/[businessId]/datasets/new/{page,upload-form}.tsx`, `…/datasets/[datasetId]/{page,mapping-review}.tsx`, `src/components/auto-refresh.tsx`, business page links, `src/lib/api/{client,server,types}.ts` (multipart client with idempotency key, problem details), `tests/datasets.test.tsx`, `e2e/datasets.spec.ts` |
+| CI and docs | `.github/workflows/ci.yml` (on-demand benchmark job), `README.md`, `docs/ROOT_MASTER_PLAN.md` (AMD-8, AMD-9), `docs/DATA_CONTRACTS.md` (§10 as-built addendum, plus "Amended by" notes in §2, §2.6, §6.2, §7.4) |
+
+### Upload pipeline and execution flow
+
+```
+POST /businesses/{bid}/datasets (CSRF, Idempotency-Key, multipart)
+  → RequirePermission(dataset:upload) → parse form (≤4 files, ≤2 fields, spooled temp files)
+  → per file in a thread: extension/content-type → chunked SHA-256 + strict UTF-8 + NUL/signature
+    → header → normalise → propose mapping (exact/proposed/ambiguous) → strip PII columns
+  → timezone/currency checks → advisory lock(business) → idempotency replay? → quota
+    → duplicate checksum? → version N+1 → datasets + dataset_files (+ job if no decision needed)
+    → audit → store idempotent response → COMMIT → 202
+[awaiting_mapping] POST …/mapping → validate decisions → status queued + job → 202
+worker: lease job → tx1: status validating → tx2: temp staging tables → stream-parse + COPY
+  → SQL rules → thresholds → INSERT…SELECT canonical tables → profiles/stats → ready|rejected
+  (exception → rollback → retry if transient → final failure marks dataset failed)
+GET …/datasets/{id} (polled by the UI) · …/issues · …/records/{kind} · …/export/{kind}
+```
+
+### Database changes (migration `0002`)
+
+The full schema is in DATA_CONTRACTS §10.6:
+
+- new tables `dataset_files`, `products`, `customers`, `order_lines`, `returns`, `validation_issues`, `idempotency_keys`, `jobs`
+- new dataset statuses and columns, with `sales_rows` renamed to `orders_rows`
+- an immutability trigger
+- composite primary and foreign keys, and CHECK constraints mirroring the value rules
+- RLS on every tenant table, plus column-level grants
+
+The downgrade to `0001` and the upgrade back are tested.
+
+### Security controls (with tests)
+
+| Control | Tests |
+|---|---|
+| Authorization before body parsing. Role matrix and cross-tenant 404 now enumerate **all** methods, including the upload, mapping and `PATCH` routes. Cross-tenant attempts change nothing (verified in the database) | `security/test_authorization.py` |
+| RLS on the record tables: no context, a foreign context and a forged insert all fail | `security/test_ingestion_isolation.py`, `security/test_database_controls.py` |
+| Malicious or malformed files: empty, wrong type, PDF/ZIP/XLSX, UTF-16, Latin-1, NUL, unterminated quote, >100 columns, duplicate headers, oversize per file and per request | `integration/test_upload_guards.py` (14-case matrix and others) |
+| No PII stored: raw bytes, headers, issue excerpts and records are searched for the PII sentinel values | `test_ambiguous_mapping_requires_human_confirmation`, `test_pii_column_in_customers_is_dropped` |
+| Formula injection: exports escape `= + - @ \t \r`, checked on every exported cell | `test_safe_export_escapes_formulas`, `unit/test_safe_cell`, e2e export check |
+| Sanitised errors: no internals in failure states (`unexpected_error` code only) | `test_failure_rolls_back_every_write` |
+| Upload quota (SEC-20), idempotency (SEC-14) | `test_upload_quota`, `test_idempotent_retries_and_duplicate_content` |
+| Untrusted uploaded text is never passed to an LLM or agent instruction (no LLM exists yet). `reason_text` is stored as data only | design. To be re-verified by T-22 in the LLM phase |
+
+### Validation logic
+
+Rule semantics are in DATA_CONTRACTS §10.4. **Every issue code in `ISSUE_CODES` is referenced by at least one test.** This was checked with a script, and three codes (V-015, V-016, V-043) were missing a fixture until it ran.
+
+### Performance (measured, not estimated)
+
+Environment: macOS, Intel Core i9-8950HK (6 cores / 12 threads), 32 GB RAM, local PostgreSQL 18.6, Python 3.14.8. The data comes from the seeded generator (26 weeks, 3,000 customers, 150 products, about 5% returns). The command is `uv run pytest tests/perf -m perf -s`.
+
+Final code (stream-decoding):
+
+| Order lines | Upload size | Upload request | Ingestion job | Total | Lines/s | Python peak (tracemalloc, separate run) | Process peak RSS before → after |
+|---|---|---|---|---|---|---|---|
+| 20,326 | 1.57 MB | 0.163 s | 2.461 s | **2.62 s** | 8,261 | 1.7 MB | 178 → 201 MB |
+| 100,961 | 7.41 MB | 0.332 s | 13.190 s | **13.52 s** | 7,654 | 7.6 MB | 219 → 310 MB |
+
+Earlier run, before switching to stream-decoding (same seeds): 20,326 lines in 2.09 s total with a 8.7 MB Python peak; 100,961 lines in 9.47 s with a 43.2 MB Python peak.
+
+The process-RSS figures cover the whole pytest process (test client, driver buffers, previous allocations) and are high-water marks, so they are upper bounds rather than ingestion-only costs. NFR-02 (100k lines ingest and validate ≤ 30 s) **is met on this hardware**. It has not been measured on CI or production hardware yet; the benchmark job is available through `workflow_dispatch`.
+
+Query design avoids N+1: per-row work happens in Python streaming and `COPY`, and every cross-row rule is one set-based statement per rule. The staging tables are `ANALYZE`d before the rules run, and the canonical tables are indexed on `(business_id, dataset_id, date)` and the foreign-key columns.
+
+### Tests executed and actual results
+
+| Check | Command | Result |
+|---|---|---|
+| Backend lint and format | `uv run ruff check .` / `ruff format --check .` | All checks passed. 69 files formatted |
+| Backend types | `uv run mypy` (strict, 69 files) | No issues |
+| Backend tests | `uv run pytest --cov --cov-fail-under=85` | **247 passed** (unit 94, integration 98, security 55), 2 perf deselected. Coverage **96.16%** |
+| Auth and tenancy coverage gate | `coverage report --include='app/auth/*,app/tenancy/*' --fail-under=95` | Passed |
+| Benchmarks | `uv run pytest tests/perf -m perf -s` | 2 passed (table above) |
+| Python audit | `uv run pip-audit` | No known vulnerabilities |
+| OpenAPI and TypeScript contract | `export_openapi` then `api:types` | Regenerated. No drift between them |
+| Frontend | `npm ci`, `lint`, `typecheck`, `test:coverage`, `build` | All exit 0. **28 Vitest tests** passed. Statements 98.6%, branches 88.23% |
+| npm audit | `npm audit --omit=dev --audit-level=high` / `npm run audit:gate` | 0 production findings. Gate passed (only the AMD-7 exception) |
+| Browser end-to-end | `npx playwright test` (production build + real API + worker + PostgreSQL) | **6 passed**: the 4 Phase 2 smoke tests, plus (1) upload, then live status, then a rejected dataset with V-013 and V-041 shown in the report and the issues CSV downloaded; (2) a synonym header held for confirmation, then confirmed, then `ready`, then a product export containing `'=SUM(A1)` |
+| Database migrations | `test_migrations_upgrade_downgrade_upgrade` (base ↔ 0001 ↔ 0002) and `alembic upgrade head` on the dev database | Passed |
+
+**User-required test checklist:**
+
+| Test | Where it is covered |
+|---|---|
+| Valid complete upload | `test_valid_dataset_is_persisted_exactly`, e2e |
+| Empty CSV, incorrect type | upload-guard matrix |
+| Unexpected encoding, corrupt files | upload-guard matrix, `test_structurally_broken_csv_inside_file_is_rejected` |
+| Oversized upload | `test_oversized_files_are_rejected` |
+| Duplicate keys | `test_duplicate_keys` |
+| Missing required columns | matrix, `test_missing_required_columns_explain_accepted_headers` |
+| Optional columns | `test_optional_columns_may_be_absent` |
+| Ambiguous mapping | `test_ambiguous_mapping_requires_human_confirmation`, e2e |
+| Missing parents | `test_relational_rules_reject_rows` (V-030, V-031, V-032), `test_cascade_rejection_follows_references` |
+| Invalid currency | `test_currency_values` |
+| Invalid dates and time zones | `test_value_validation_and_time_interpretation`, `test_invalid_source_timezone_is_rejected`, unit date tests |
+| Returns exceeding purchase | V-035 and V-036 cases |
+| Cross-tenant access | authorization matrix, isolation test |
+| Duplicate uploads | `test_idempotent_retries_and_duplicate_content` |
+| Transaction rollback | `test_failure_rolls_back_every_write` |
+| Concurrent uploads | `test_concurrent_uploads_get_distinct_versions` |
+| Large-file performance | perf tests |
+| Corrected re-upload | `test_reupload_of_corrected_dataset_creates_new_version` |
+| Safe export | `test_safe_export_escapes_formulas` |
+
+Stored records are compared field by field against the source rows, and referential integrity is verified with orphan queries that must return 0.
+
+### Errors encountered and fixes applied
+
+1. `python-multipart` was missing, so form parsing failed. It was added as a pinned dependency (AMD-9).
+2. **`COPY FROM not supported with row-level security`** on `validation_issues`. Fixed by copying into a temp table, then `INSERT … SELECT` (AMD-9).
+3. **Mapping confirmation lost the PII record.** Confirmation recomputed `pii_dropped` from headers that had already been stripped, which dropped V-041. It now carries the original list forward.
+4. **Too many multipart parts returned 400 instead of 422.** Starlette raises `HTTPException(400)`, not `MultiPartException`. Both are now mapped to a 422 problem.
+5. **SQL predicate bug, found in review before any test ran:** the helper built `o.NOT o.rejected`. Fixed with an explicit `ACCEPTED_O` predicate.
+6. **Memory:** whole-file decoding was replaced with stream-decoding. Measured effect: 5.1× (20k lines) and 5.7× (100k lines) lower Python peak.
+7. Test-side corrections, not product defects:
+   - A future-dated DST sample was correctly rejected, so the sample moved to 2025.
+   - The 5% threshold needed padding rows in the single-error fixtures.
+   - The mapping unit test's selection was incomplete; the product correctly demands every decision.
+8. Lint and typing:
+   - Dynamic staging SQL got a scoped, documented per-file S608 exception: identifiers come from module constants and all values are bound.
+   - The generator got a scoped S311 exception.
+   - Exception classes were renamed (N818).
+   - Mypy variance fixes in the generator.
+
+### Known limitations and remaining risks
+
+| Risk | Note / owner phase |
+|---|---|
+| CI unobserved for Phase 2 and Phase 3 commits | Private repo, no API access from this session. The owner should check the Actions tab |
+| Platform body limits | 60 MB uploads go through the Next.js rewrite. Locally this is unbuffered (the proxy matcher excludes `/api`). Vercel's limits on externally rewritten requests must be verified in the deployment phase |
+| The worker shares the API process | Ingestion CPU (about 8k lines/s) competes with requests. Fine at the target scale; to be measured under load in hardening |
+| Raw files kept in the database for 30 days | Purge job, plus dataset deletion, come in hardening (AMD-8) |
+| Cumulative-return semantics | They count all earlier valid returns, documented in §10.4. A return rejected for other reasons does not count |
+| Issue storage cap (10,000 per code) | Counts stay exact. The report states the cap |
+| E2E test data accumulates | Each local e2e run uploads two datasets to the seeded business. The upload quota (10/hour) can be reached with more than 5 runs per hour by design. CI uses a fresh database |
+| No LLM yet | The "untrusted content never reaches agent instructions" rule must be enforced and tested (T-22) when the LLM gateway arrives |
+
+### Acceptance criteria status (baseline AC-4.x, plus the user's completion gate)
+
+| AC | Status | Evidence |
+|---|---|---|
+| AC-4.1 Every rule has a failing-fixture test with its code | Met | Script check: 0 codes without a test |
+| AC-4.2 Oversize rejected before full buffering | Met. `Content-Length` precheck and streamed byte counting at 60 MB; files over 1 MB spool to disk, not memory | `test_oversized_files_are_rejected`, middleware tests |
+| AC-4.3 PII never reaches the database | Met | PII sentinel searches across raw files, headers, issues and records |
+| AC-4.4 Ready dataset immutable (API and database) | Met | `test_ready_dataset_is_immutable`, `test_reupload_…` |
+| AC-4.5 100k lines in ≤ 30 s | Met on local hardware (13.52 s). CI and production not yet measured | benchmark |
+| AC-4.6 Same seed gives byte-identical CSVs | Met | `test_generator_is_deterministic` |
+| User gate: all four datasets uploaded, validated, normalised, persisted and retrieved without silent corruption | Met | field-by-field comparison, orphan queries, records API, e2e |
+
+### Commit hash and GitHub push status
+
+The hash is recorded at the start of the next phase entry, as for previous phases. It is also reported in the session summary.
+
+### Next-phase dependencies
+
+- Phase 4 (baseline Phase 5, analytics) reads `order_lines`, `returns`, `products` and `customers` for `ready` datasets only, using `order_date` and `return_date` (business-local) and NUMERIC money.
+- The owner should confirm the CI results for `0881d4b` and the Phase 3 commit.

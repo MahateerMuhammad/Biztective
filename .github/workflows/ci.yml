@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      benchmark:
+        description: Run the ingestion benchmark (NFR-02)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -155,6 +161,42 @@ jobs:
           name: playwright-report
           path: apps/web/playwright-report
           retention-days: 7
+
+  benchmark:
+    if: github.event_name == 'workflow_dispatch' && inputs.benchmark
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: services/api
+    services:
+      postgres:
+        image: postgres:18.6-trixie@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+        env:
+          POSTGRES_USER: root_owner
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U root_owner" --health-interval 2s --health-timeout 3s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - run: uv sync --locked
+      - name: Provision app role
+        run: |
+          APP_PW="$(openssl rand -hex 24)"
+          echo "::add-mask::$APP_PW"
+          echo "TEST_APP_DB_PASSWORD=$APP_PW" >> "$GITHUB_ENV"
+          ROOT_APP_DB_PASSWORD="$APP_PW" ../../infra/postgres/create-app-role.sh
+      - name: Ingestion benchmark
+        env:
+          TEST_DATABASE_ADMIN_URL: postgresql+psycopg://root_owner@localhost:5432/postgres
+          BENCHMARK_OUTPUT: benchmark.jsonl
+        run: uv run pytest tests/perf -m perf -s
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ingestion-benchmark
+          path: services/api/benchmark.jsonl
 
   secrets:
     runs-on: ubuntu-24.04

@@ -16,12 +16,20 @@ EXPECTED_TABLES = {
     "audit_log",
     "auth_attempts",
     "businesses",
+    "customers",
+    "dataset_files",
     "datasets",
+    "idempotency_keys",
+    "jobs",
     "memberships",
+    "order_lines",
+    "products",
+    "returns",
     "sessions",
     "users",
+    "validation_issues",
 }
-RLS_TABLES = {"audit_log", "businesses", "datasets", "memberships"}
+RLS_TABLES = EXPECTED_TABLES - {"alembic_version", "auth_attempts", "jobs", "sessions", "users"}
 
 
 async def test_healthz(client: httpx.AsyncClient) -> None:
@@ -87,8 +95,10 @@ def test_migrations_upgrade_downgrade_upgrade(admin_url: str, app_password: str)
         assert functions == 0
 
         command.upgrade(config, "head")
+        command.downgrade(config, "0001")  # each revision downgrades on its own
+        command.upgrade(config, "head")
         with engine.connect() as conn:
-            assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "0001"
+            assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "0002"
     finally:
         engine.dispose()
         drop_database(admin_url, name)

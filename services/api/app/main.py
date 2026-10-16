@@ -1,5 +1,8 @@
 """Application factory."""
 
+import asyncio
+import contextlib
+import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -20,19 +23,42 @@ from app.core.middleware import (
     SecurityHeadersMiddleware,
 )
 from app.datasets.router import router as datasets_router
+from app.ingestion.contract import MAX_UPLOAD_BYTES
+from app.ingestion.pipeline import ingest_dataset, mark_dataset_failed
+from app.jobs.queue import LeasedJob
+from app.jobs.worker import run_worker
 from app.tenancy.router import router as tenancy_router
 
 MAX_JSON_BODY_BYTES = 1024 * 1024  # SEC-07
+UPLOAD_ROUTE = re.compile(r"/api/v1/businesses/[^/]+/datasets")
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings.log_level)
     engine = create_engine(settings)
+    sessionmaker = create_sessionmaker(engine)
+
+    async def on_final_failure(job: LeasedJob, code: str) -> None:
+        await mark_dataset_failed(sessionmaker, job, code)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        worker: asyncio.Task[None] | None = None
+        if settings.worker_enabled:
+            worker = asyncio.create_task(
+                run_worker(
+                    sessionmaker,
+                    {"ingest_dataset": ingest_dataset},
+                    on_final_failure,
+                    poll_seconds=settings.worker_poll_seconds,
+                )
+            )
         yield
+        if worker is not None:
+            worker.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await worker
         await engine.dispose()
 
     expose_docs = not settings.is_production
@@ -45,7 +71,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url="/api/openapi.json" if expose_docs else None,
     )
     app.state.settings = settings
-    app.state.sessionmaker = create_sessionmaker(engine)
+    app.state.sessionmaker = sessionmaker
+    app.state.on_job_failure = on_final_failure
     app.state.migration_head = health.expected_migration_head()
 
     api = APIRouter(prefix="/api/v1")
@@ -64,11 +91,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_origins=[settings.frontend_origin],
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-        allow_headers=["Content-Type", "X-CSRF-Token", "X-Request-ID"],
+        allow_headers=["Content-Type", "X-CSRF-Token", "X-Request-ID", "Idempotency-Key"],
         expose_headers=["X-Request-ID"],
         max_age=600,
     )
-    app.add_middleware(BodySizeLimitMiddleware, max_bytes=MAX_JSON_BODY_BYTES)
+    app.add_middleware(
+        BodySizeLimitMiddleware,
+        max_bytes=MAX_JSON_BODY_BYTES,
+        overrides=(("POST", UPLOAD_ROUTE, MAX_UPLOAD_BYTES),),
+    )
     app.add_middleware(RequestContextMiddleware)
     app.add_middleware(SecurityHeadersMiddleware, hsts=settings.is_production)
     return app

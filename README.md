@@ -35,6 +35,16 @@ npm ci
 npm run dev                     # http://localhost:3000, sign in with the DEMO_* account
 ```
 
+Then open **Upload dataset** on the business page and select `orders.csv`, `products.csv`,
+`customers.csv` and `returns.csv`. Uncertain column matches stop for your confirmation. The data
+quality report shows every rejected row with its rule (V-xxx) and reason. To generate realistic
+files:
+
+```bash
+cd services/api
+uv run python -m scripts.generate_dataset --seed 7 --out /tmp/root-demo   # add --noise 0.02 / --pii-column
+```
+
 The browser only talks to the Next.js origin. `/api/v1/*` is rewritten to the backend, so session
 cookies stay first-party. The web process connects to PostgreSQL as `root_app`, a role with row-level
 security and no DDL rights; `/api/v1/readyz` reports not-ready if it is pointed at a privileged role.
@@ -46,6 +56,7 @@ security and no DDL rights; `/api/v1/readyz` reports not-ready if it is pointed 
 cd services/api
 uv run ruff check . && uv run ruff format --check . && uv run mypy
 uv run pytest --cov --cov-fail-under=85
+uv run pytest -m perf -s        # ingestion benchmark (~20k and ~100k order lines)
 uv run pip-audit
 
 # Frontend

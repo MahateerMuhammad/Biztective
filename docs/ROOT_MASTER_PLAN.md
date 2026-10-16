@@ -637,3 +637,27 @@ Format:
 - Change: In Phase 2 the `audit_log` trigger rejects every UPDATE and DELETE, for all roles. The 365-day retention deletion path is designed and amended in Phase 12, when the retention sweep is implemented.
 - Reason: No retention job exists yet. A dormant exemption would be speculative code.
 - Supersedes: SECURITY_MODEL §10 audit-log row (mechanism only; the retention period stands).
+
+### AMD-8 — 2026-10-16 — Phase 3
+- Affects: §8 (phase numbering and Phase 3/4 scope), §10 (phase columns), DATA_CONTRACTS §2, §2.6, §6.2, §7.3, §7.4. AGENTS.md R-3 is unchanged.
+- **Change 1, numbering.** From Phase 3 onward, phase numbers follow the user's instructions. User Phase *k* (k ≥ 3) is baseline Phase *k + 1*, so user Phase 3 is the baseline Phase 4 "Data ingestion and validation". Its prompt, tests (T-09, T-10, T-11, T-42 dataset part, T-52, T-40 upload part, T-05 generator part) and acceptance criteria AC-4.1 to AC-4.6 apply to it, extended below. The AMD-2 "account lifecycle and membership management" scope (self-registration, membership endpoints, T-48) moves into the baseline Phase 12 hardening phase. The one exception is `idempotency_keys`, which is delivered now because uploads require it.
+- **Change 2, Phase 3 scope additions** (user instruction):
+  - **Files.** The order-line file is named **`orders.csv`** (one row per order line), and its table is `order_lines`. Columns are as DATA_CONTRACTS §2.3.
+  - **Column mapping with a human checkpoint.** Headers are normalised and matched to canonical columns. Exact matches are accepted automatically. Synonym and ambiguous matches are only *proposals*: the dataset waits in `awaiting_mapping` until a user with `dataset:upload` confirms them. A required column with no candidate rejects the upload with an explanation.
+  - **Currency and time.** An optional `currency` column on `orders.csv`, and an optional `currency` form field, must equal the business currency (no FX, A1). A `source_timezone` form field (IANA, default the business time zone) sets how naive date-times are read. Values are stored as a calendar date in the business time zone, plus a UTC `timestamptz` when a time was supplied.
+  - **Profiling summaries and provenance.** `source_row` is kept on every record, along with file SHA-256 and the mapping used.
+  - **Retrieval and export.** Paginated record retrieval, and CSV export with formula-injection escaping (SEC-16).
+  - **Configurable business settings.** `PATCH /businesses/{id}` (owner) changes `currency` (only while no dataset exists) and `timezone`.
+  - **Duplicate uploads.** Re-uploading content identical to an existing non-failed version of the business returns 409 `duplicate_dataset`. A corrected re-upload creates version N+1, and earlier versions stay immutable.
+- **Change 3, deferred.** Dataset deletion (part of T-42) moves to the baseline Phase 12 together with the retention sweep. Phase 3 needs no delete path, and versions are immutable.
+- Reason: The user's Phase 3 instruction.
+- Supersedes: the baseline file name `sales.csv` and table name `sales_lines`, the DATA_CONTRACTS §2.5 "header matching is case-insensitive" rule (now the mapping procedure), and the dataset status list in DATA_CONTRACTS §6.2.
+
+### AMD-9 — 2026-10-16 — Phase 3
+- Affects: ARCHITECTURE §13.1 (backend runtime dependencies), §16 (ingestion performance notes).
+- Change:
+  - **New dependency `python-multipart` 0.0.32.** Starlette requires it to parse `multipart/form-data`, and dataset uploads need multipart.
+  - **COPY under RLS.** PostgreSQL rejects `COPY FROM` into tables with row-level security. Ingestion therefore `COPY`s into transaction-scoped temp staging tables, which have no RLS, and persists with `INSERT … SELECT`, which passes the RLS `WITH CHECK`. This keeps RLS on every tenant table without giving the app role BYPASSRLS.
+  - **Benchmark job.** The ingestion benchmark (`pytest -m perf`) runs on demand in CI (`workflow_dispatch`), not on every push.
+- Reason: Phase 3 implementation findings.
+- Supersedes: none (additive).

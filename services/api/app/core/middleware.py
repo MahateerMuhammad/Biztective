@@ -94,18 +94,35 @@ class _BodyTooLargeError(BaseException):
 
 
 class BodySizeLimitMiddleware:
-    """Rejects bodies above the limit, using Content-Length up front and counting streamed bytes."""
+    """Rejects bodies above the limit, using Content-Length up front and counting streamed bytes.
 
-    def __init__(self, app: ASGIApp, *, max_bytes: int) -> None:
+    `overrides` raises the limit for specific routes (method, path regex), e.g. uploads.
+    """
+
+    def __init__(
+        self,
+        app: ASGIApp,
+        *,
+        max_bytes: int,
+        overrides: tuple[tuple[str, re.Pattern[str], int], ...] = (),
+    ) -> None:
         self.app = app
-        self.max_bytes = max_bytes
+        self.default_max = max_bytes
+        self.overrides = overrides
+
+    def _limit(self, scope: Scope) -> int:
+        for method, pattern, limit in self.overrides:
+            if scope["method"] == method and pattern.fullmatch(scope["path"]):
+                return limit
+        return self.default_max
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
+        max_bytes = self._limit(scope)
         declared = dict(scope["headers"]).get(b"content-length")
-        if declared is not None and (not declared.isdigit() or int(declared) > self.max_bytes):
+        if declared is not None and (not declared.isdigit() or int(declared) > max_bytes):
             await self._reject(scope, receive, send)
             return
 
@@ -117,7 +134,7 @@ class BodySizeLimitMiddleware:
             message = await receive()
             if message["type"] == "http.request":
                 received += len(message.get("body", b""))
-                if received > self.max_bytes:
+                if received > max_bytes:
                     raise _BodyTooLargeError
             return message
 

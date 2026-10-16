@@ -7,6 +7,25 @@ export type User = Schemas["UserOut"];
 export type Business = Schemas["BusinessOut"];
 export type Dataset = Schemas["DatasetOut"];
 export type DatasetPage = Schemas["Page_DatasetOut_"];
+export type DatasetDetail = Schemas["DatasetDetail"];
+export type DatasetFile = Schemas["DatasetFileOut"];
+export type IssuePage = Schemas["Page_IssueOut_"];
+export type Issue = Schemas["IssueOut"];
+export type IssueSummary = Schemas["IssueSummaryOut"];
+
+/** Column mapping stored per file (services/api app/ingestion/mapping.py). */
+export interface ColumnMapping {
+  source: string | null;
+  status: "exact" | "proposed" | "ambiguous" | "unmapped" | "confirmed";
+  candidates: string[];
+  required: boolean;
+}
+export interface FileMapping {
+  columns: Record<string, ColumnMapping>;
+  ignored: string[];
+  pii_dropped: string[];
+  needs_confirmation: boolean;
+}
 
 /** RFC 9457 problem details returned by the API for every error. */
 export interface Problem {
@@ -24,6 +43,8 @@ export class ApiProblem extends Error {
   readonly code: string;
   readonly requestId: string | null;
   readonly retryAfterSeconds: number | null;
+  /** Field-level explanations, e.g. "orders.quantity: required column not found". */
+  readonly details: string[];
 
   constructor(problem: Problem, retryAfterSeconds: number | null = null) {
     super(problem.detail);
@@ -32,6 +53,9 @@ export class ApiProblem extends Error {
     this.code = problem.code;
     this.requestId = problem.request_id;
     this.retryAfterSeconds = retryAfterSeconds;
+    this.details = (problem.errors ?? []).map((e) =>
+      e.field ? `${e.field}: ${e.message}` : e.message,
+    );
   }
 }
 
@@ -49,6 +73,7 @@ export async function toApiProblem(response: Response): Promise<ApiProblem> {
           detail: body.detail,
           code: body.code,
           request_id: body.request_id ?? null,
+          errors: Array.isArray(body.errors) ? body.errors : undefined,
         },
         retryAfterSeconds,
       );

@@ -9,13 +9,20 @@ import pytest
 from fastapi import FastAPI
 from fastapi.dependencies.models import Dependant
 from fastapi.routing import APIRoute, iter_route_contexts
-from sqlalchemy import Engine, func, select
+from sqlalchemy import Engine, func, select, text
 
 from app.auth.dependencies import get_current_user
 from app.models import AuditLog
 from app.tenancy.dependencies import RequirePermission
 from app.tenancy.permissions import ROLE_PERMISSIONS, Permission, Role
-from tests.helpers import add_member, create_dataset, create_tenant, create_user, login
+from tests.helpers import (
+    add_member,
+    create_dataset,
+    create_tenant,
+    create_user,
+    csrf_headers,
+    login,
+)
 
 PUBLIC_ROUTES = {
     ("GET", "/api/v1/healthz"),
@@ -102,17 +109,27 @@ def world(owner_engine: Engine) -> World:
 
 
 def _url(path: str, business_id: uuid.UUID, dataset_id: uuid.UUID) -> str:
-    return path.replace("{business_id}", str(business_id)).replace("{dataset_id}", str(dataset_id))
+    return (
+        path.replace("{business_id}", str(business_id))
+        .replace("{dataset_id}", str(dataset_id))
+        .replace("{kind}", "orders")
+    )
 
 
-def _business_get_routes(app: FastAPI) -> list[tuple[str, Permission]]:
-    routes: list[tuple[str, Permission]] = []
+def _business_routes(app: FastAPI) -> list[tuple[str, str, Permission]]:
+    routes: list[tuple[str, str, Permission]] = []
     for method, route in _api_routes(app):
         permission = _required_permission(route)
         if permission is not None:
-            assert method == "GET", "extend this test with request bodies for unsafe methods"
-            routes.append((route.path, permission))
+            routes.append((method, route.path, permission))
     return routes
+
+
+async def _call(client: httpx.AsyncClient, method: str, url: str) -> httpx.Response:
+    """Minimal request: unsafe methods carry CSRF protection and an (invalid) empty body."""
+    if method == "GET":
+        return await client.get(url)
+    return await client.request(method, url, headers=await csrf_headers(client), json={})
 
 
 @pytest.mark.parametrize("role", ROLES)
@@ -121,29 +138,41 @@ async def test_role_permission_matrix(
 ) -> None:
     email = "owner@example.test" if role == "owner" else f"{role}@example.test"
     assert (await login(client, email)).status_code == 200
-    for path, permission in _business_get_routes(app):
-        response = await client.get(_url(path, world.business_id, world.dataset_id))
-        expected = 200 if permission in ROLE_PERMISSIONS[role] else 403
-        assert response.status_code == expected, f"{role} {path}"
-        if expected == 403:
+    for method, path, permission in _business_routes(app):
+        response = await _call(client, method, _url(path, world.business_id, world.dataset_id))
+        label = f"{role} {method} {path}"
+        if permission in ROLE_PERMISSIONS[role]:
+            if method == "GET":
+                assert response.status_code == 200, label
+            else:  # authorised: may still fail validation, never authz
+                assert response.status_code in {200, 202, 409, 415, 422}, label
+        else:
+            assert response.status_code == 403, label
             assert response.json()["code"] == "forbidden"
 
 
 async def test_unauthenticated_business_routes_are_401(
     app: FastAPI, client: httpx.AsyncClient, world: World
 ) -> None:
-    for path, _ in _business_get_routes(app):
-        response = await client.get(_url(path, world.business_id, world.dataset_id))
-        assert response.status_code == 401, path
+    for method, path, _ in _business_routes(app):
+        response = await _call(client, method, _url(path, world.business_id, world.dataset_id))
+        assert response.status_code == 401, f"{method} {path}"
 
 
 async def test_cross_tenant_access_is_404_without_data(
     app: FastAPI, client: httpx.AsyncClient, world: World, owner_engine: Engine
 ) -> None:
     await login(client, "owner@example.test")
-    for path, _ in _business_get_routes(app):
-        response = await client.get(_url(path, world.other_business_id, world.other_dataset_id))
-        assert response.status_code == 404, path
+    with owner_engine.connect() as conn:
+        before = conn.execute(
+            text("SELECT currency, timezone FROM businesses WHERE id = :id"),
+            {"id": world.other_business_id},
+        ).one()
+    for method, path, _ in _business_routes(app):
+        response = await _call(
+            client, method, _url(path, world.other_business_id, world.other_dataset_id)
+        )
+        assert response.status_code == 404, f"{method} {path}"
         body = response.json()
         assert body["code"] == "not_found"
         # Only the generic problem fields; `instance` merely echoes the requested path.
@@ -156,7 +185,17 @@ async def test_cross_tenant_access_is_404_without_data(
                 AuditLog.metadata_["reason"].astext == "not_member",
             )
         )
-    assert denied == len(_business_get_routes(app))
+        after = conn.execute(
+            text("SELECT currency, timezone FROM businesses WHERE id = :id"),
+            {"id": world.other_business_id},
+        ).one()
+        foreign_datasets = conn.scalar(
+            text("SELECT count(*) FROM datasets WHERE business_id = :id"),
+            {"id": world.other_business_id},
+        )
+    assert denied == len(_business_routes(app))
+    assert tuple(before) == tuple(after)
+    assert foreign_datasets == 1  # no upload landed in the other business
 
 
 async def test_foreign_dataset_through_own_business_is_404(

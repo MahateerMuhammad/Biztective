@@ -10,7 +10,19 @@ from sqlalchemy.exc import DBAPIError, ProgrammingError
 from tests.conftest import DatabaseUrls
 from tests.helpers import Tenant, create_dataset, create_tenant
 
-TENANT_TABLES = ("businesses", "memberships", "datasets", "audit_log")
+TENANT_TABLES = (
+    "businesses",
+    "memberships",
+    "datasets",
+    "audit_log",
+    "dataset_files",
+    "products",
+    "customers",
+    "order_lines",
+    "returns",
+    "validation_issues",
+    "idempotency_keys",
+)
 
 
 @pytest.fixture
@@ -44,7 +56,7 @@ def _scope(conn: Connection, tenant: Tenant | None) -> None:
 def test_no_context_sees_no_tenant_rows(app_engine: Engine, tenants: tuple[Tenant, Tenant]) -> None:
     with app_engine.connect() as conn:
         for table in TENANT_TABLES:
-            assert conn.scalar(text(f"SELECT count(*) FROM {table}")) == 0, table  # noqa: S608
+            assert conn.scalar(text(f"SELECT count(*) FROM {table}")) == 0, table
 
 
 def test_context_after_reset_still_sees_nothing(
@@ -55,7 +67,7 @@ def test_context_after_reset_still_sees_nothing(
         with conn.begin():
             _scope(conn, tenants[0])
         for table in TENANT_TABLES:
-            assert conn.scalar(text(f"SELECT count(*) FROM {table}")) == 0, table  # noqa: S608
+            assert conn.scalar(text(f"SELECT count(*) FROM {table}")) == 0, table
 
 
 def test_scoped_context_sees_only_own_rows(
@@ -65,7 +77,7 @@ def test_scoped_context_sees_only_own_rows(
     with app_engine.connect() as conn, conn.begin():
         _scope(conn, a)
         for table in ("datasets", "audit_log"):
-            ids = set(conn.scalars(text(f"SELECT business_id FROM {table}")))  # noqa: S608
+            ids = set(conn.scalars(text(f"SELECT business_id FROM {table}")))
             assert ids == {a.business_id}, table
         assert set(conn.scalars(text("SELECT id FROM businesses"))) == {a.business_id}
         assert set(conn.scalars(text("SELECT user_id FROM memberships"))) == {a.user_id}
@@ -91,7 +103,11 @@ def test_audit_insert_for_foreign_business_is_rejected(
         "INSERT INTO businesses (id, name, currency, timezone, created_by) "
         "VALUES (gen_random_uuid(), 'x', 'USD', 'UTC', gen_random_uuid())",
         "UPDATE users SET email = 'x@example.test'",
-        "UPDATE datasets SET status = 'deleted'",
+        "UPDATE datasets SET checksum_sha256 = NULL",
+        "UPDATE datasets SET business_id = gen_random_uuid()",
+        "DELETE FROM datasets",
+        "UPDATE jobs SET type = 'x'",
+        "DELETE FROM jobs",
         "INSERT INTO memberships (business_id, user_id, role) "
         "VALUES (gen_random_uuid(), gen_random_uuid(), 'owner')",
         "DELETE FROM sessions",

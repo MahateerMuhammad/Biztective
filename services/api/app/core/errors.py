@@ -37,12 +37,14 @@ class ApiError(Exception):
         detail: str,
         *,
         headers: dict[str, str] | None = None,
+        errors: list[dict[str, str]] | None = None,
     ) -> None:
         super().__init__(detail)
         self.status = status
         self.code = code
         self.detail = detail
         self.headers = headers
+        self.errors = errors
 
 
 def problem_response(
@@ -79,6 +81,7 @@ async def _api_error(request: Request, exc: Exception) -> JSONResponse:
         code=exc.code,
         detail=exc.detail,
         headers=exc.headers,
+        errors=exc.errors,
     )
 
 

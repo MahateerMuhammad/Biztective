@@ -12,6 +12,7 @@ dependencies = [
     "psycopg[binary,pool]==3.3.6",
     "alembic==1.20.0",
     "argon2-cffi==25.1.0",
+    "python-multipart==0.0.32",
 ]
 
 [dependency-groups]
@@ -36,8 +37,12 @@ line-length = 100
 select = ["E", "F", "W", "I", "B", "UP", "S", "ASYNC", "N", "SIM", "RUF", "PT", "BLE", "T20"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "S105", "S106"]
+"tests/**" = ["S101", "S105", "S106", "S608"]
 "migrations/**" = ["S608"]
+# Staging SQL interpolates only module-constant table/column names; every value is bound.
+"app/ingestion/pipeline.py" = ["S608"]
+# Synthetic data needs reproducible, non-cryptographic randomness.
+"scripts/generate_dataset.py" = ["S311"]
 
 [tool.mypy]
 strict = true
@@ -55,7 +60,8 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
-addopts = "-ra --strict-markers"
+addopts = "-ra --strict-markers -m 'not perf'"
+markers = ["perf: ingestion benchmarks (run explicitly with -m perf)"]
 filterwarnings = ["error"]
 
 [tool.coverage.run]

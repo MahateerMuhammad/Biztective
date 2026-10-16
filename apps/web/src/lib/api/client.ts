@@ -22,21 +22,35 @@ export function resetCsrfToken(): void {
   csrfToken = null;
 }
 
-async function send(path: string, body: unknown, token: string): Promise<Response> {
-  return fetch(path, {
-    method: "POST",
-    credentials: "same-origin",
-    headers: { "Content-Type": "application/json", "X-CSRF-Token": token },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+type Body = { json: unknown } | { form: FormData } | undefined;
+
+async function send(
+  path: string,
+  body: Body,
+  token: string,
+  extraHeaders: Record<string, string>,
+): Promise<Response> {
+  const headers: Record<string, string> = { "X-CSRF-Token": token, ...extraHeaders };
+  let payload: BodyInit | undefined;
+  if (body && "json" in body) {
+    headers["Content-Type"] = "application/json";
+    payload = JSON.stringify(body.json);
+  } else if (body) {
+    payload = body.form; // the browser sets the multipart boundary
+  }
+  return fetch(path, { method: "POST", credentials: "same-origin", headers, body: payload });
 }
 
-export async function postJson<T>(path: string, body?: unknown): Promise<T | null> {
-  let response = await send(path, body, csrfToken ?? (await fetchCsrfToken()));
+async function post<T>(
+  path: string,
+  body: Body,
+  extraHeaders: Record<string, string> = {},
+): Promise<T | null> {
+  let response = await send(path, body, csrfToken ?? (await fetchCsrfToken()), extraHeaders);
   if (response.status === 403) {
     const problem = await toApiProblem(response.clone());
     if (problem.code === "csrf_failed") {
-      response = await send(path, body, await fetchCsrfToken());
+      response = await send(path, body, await fetchCsrfToken(), extraHeaders);
     }
   }
   if (!response.ok) {
@@ -46,4 +60,20 @@ export async function postJson<T>(path: string, body?: unknown): Promise<T | nul
     return null;
   }
   return (await response.json()) as T;
+}
+
+export async function postJson<T>(path: string, body?: unknown): Promise<T | null> {
+  return post<T>(path, body === undefined ? undefined : { json: body });
+}
+
+/**
+ * Multipart upload. Pass the same idempotency key when retrying the same submission so the
+ * server never creates a second dataset version for it.
+ */
+export async function postForm<T>(path: string, form: FormData, idempotencyKey: string): Promise<T> {
+  const result = await post<T>(path, { form }, { "Idempotency-Key": idempotencyKey });
+  if (result === null) {
+    throw new Error("Unexpected empty response");
+  }
+  return result;
 }

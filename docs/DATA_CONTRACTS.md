@@ -15,6 +15,8 @@
 
 ## 2. Upload contracts (CSV)
 
+> **Amended by AMD-8 (§10):** the order-line file is `orders.csv`. Header matching follows the mapping procedure in §10.2, and validation codes are extended in §10.4.
+
 One dataset upload consists of exactly four files: `products.csv`, `customers.csv`, `sales.csv`, `returns.csv`. `returns.csv` may contain a header only.
 
 ### 2.1 `products.csv`
@@ -75,6 +77,8 @@ One dataset upload consists of exactly four files: `products.csv`, `customers.cs
 - The currency is set per business (ISO 4217) and is not a column (assumption A1).
 
 ### 2.6 Validation rules
+
+> **Amended by AMD-8:** see §10.4 for the as-built rule set (new V-017 and V-044, cumulative-return semantics, issue storage cap).
 
 Severity: **E-file** rejects the dataset. **E-row** quarantines the row. **W** is a warning. If quarantined rows exceed **5%** of any file (`V-099`), the dataset is rejected.
 
@@ -270,6 +274,8 @@ All tenant-scoped tables have `business_id uuid NOT NULL REFERENCES businesses O
 
 ### 6.2 Data
 
+> **Amended by AMD-8:** as built, see §10.6 (`order_lines` instead of `sales_lines`, new dataset statuses and columns, `jobs`, `idempotency_keys`).
+
 | Table | Key columns | Notes |
 |---|---|---|
 | `datasets` | id, business_id, version (int, per business), status (`uploaded`, `validating`, `ready`, `rejected`, `deleted`), row counts, date_min, date_max, checksum_sha256, uploaded_by | Unique (business_id, version). Immutable once `ready` (trigger) |
@@ -384,6 +390,8 @@ Standard codes:
 | PATCH/DELETE | `/businesses/{bid}/members/{uid}` | `member:manage` | Cannot remove or demote the last owner (409) |
 
 ### 7.4 Datasets
+
+> **Amended by AMD-8:** as built, see §10.7 (mapping confirmation, records and export endpoints; `DELETE` deferred to Phase 12).
 
 | Method | Path | Permission | Notes |
 |---|---|---|---|
@@ -563,3 +571,138 @@ The pipeline is ARCHITECTURE §8.3.
 - `{{entity:<category|product|region|channel|segment>:<server_ref>}}`.
 
 Rendering formats each value using the business currency and locale. Rates are formatted as percentages with 1 dp.
+
+## 10. Phase 3 ingestion contract (AMD-8, as built)
+
+### 10.1 Upload request
+
+`POST /api/v1/businesses/{business_id}/datasets` (`dataset:upload`, owner or analyst). Requirements:
+
+- A CSRF token and an **`Idempotency-Key`** header (8–100 characters, `[A-Za-z0-9_-]`) are required.
+- The body is `multipart/form-data` with exactly the parts `orders`, `products`, `customers` and `returns` (one file each), plus the optional fields:
+  - `source_timezone`: IANA name, default is the business time zone.
+  - `currency`: must equal the business currency.
+- Authorization is checked **before** the body is parsed. Multipart parsing allows at most 4 files and 2 fields. File parts are spooled to temporary files that are deleted when the request ends.
+
+**Request-time checks.** Each one rejects the upload synchronously, and no dataset is created:
+
+| Check | Status / code |
+|---|---|
+| Not multipart | 415 `unsupported_media_type` |
+| Missing, duplicate or unexpected parts | 422 `missing_files`, `duplicate_field` or `unexpected_field` |
+| Extension not `.csv`, or content type not CSV-like (`text/csv`, `application/csv`, `text/plain`, `application/vnd.ms-excel`, `application/octet-stream`) | 415 `invalid_file_type` |
+| File > 25 MB, or request > 60 MB | 413 `file_too_large` or `payload_too_large` |
+| Binary signature (ZIP/XLSX, OLE, PDF, gzip, UTF-16 BOM) or NUL bytes | 422 `corrupt_file` |
+| Not strict UTF-8 (byte offset reported) | 422 `invalid_encoding` |
+| Empty file, or header-only (except `returns`) | 422 `empty_file` |
+| Header not parseable, or more than 100 columns | 422 `invalid_csv` |
+| Empty or duplicate header names after normalisation | 422 `invalid_header` or `duplicate_header` |
+| A required column has no exact or synonym match | 422 `missing_required_columns`, with the accepted header names listed per column |
+| `source_timezone` unknown | 422 `invalid_timezone` |
+| `currency` malformed, or not equal to the business currency | 422 `invalid_currency` or `currency_mismatch` |
+| Identical files to a non-failed version of this business | 409 `duplicate_dataset` (names the version) |
+| More than 10 uploads per business per hour | 429 `rate_limited` |
+| Same `Idempotency-Key` with different content | 409 `idempotency_key_reuse` |
+
+Same key with same content returns the stored 202 response; keys last 24 h. Success is **202** with the dataset detail. Status is `awaiting_mapping` if any column needs a decision, otherwise `queued`.
+
+### 10.2 Column mapping and the human checkpoint
+
+- **Normalisation:** trim, lowercase, strip the BOM, turn spaces, hyphens, dots and slashes into `_`, and drop other symbols.
+- **Mapping status per canonical column:**
+  - `exact` (the header equals the canonical name; auto-accepted)
+  - `proposed` (exactly one synonym found)
+  - `ambiguous` (several synonyms, or one header proposed for two columns)
+  - `unmapped`
+- Synonyms are listed in `app/ingestion/contract.py`.
+- **Any `proposed` or `ambiguous` column puts the dataset in `awaiting_mapping`.** No job is queued until `POST …/datasets/{id}/mapping` with `{"files": {"<kind>": {"<canonical>": "<header>" | null}}}` decides **every** pending column.
+  - The chosen header must exist in the file, must not be personal data, and must not be used twice.
+  - Required columns cannot be null.
+  - Violations return 422 `invalid_mapping` with per-column errors. A second confirmation returns 409 `invalid_state`.
+- **Personal data:** in `customers`, `orders` and `returns`, headers whose tokens indicate personal data (email, phone, address, postcode, birth date, card, IP, or `*_name` other than product, category, channel, region, store, brand, campaign or item names) are **removed from the stored file before it reaches the database** and reported as V-041. If a row's field count does not match the header, it cannot be split safely, so it is replaced by an empty line and reported as V-010 at the same row number. `products` is exempt, because its `name` is a product name.
+- Headers that are neither mapped nor personal data are ignored and reported as V-040.
+
+### 10.3 Value interpretation
+
+- **Dates and times:** ISO 8601 only (`YYYY-MM-DD`, `YYYY-MM-DD[T ]HH:MM[:SS[.ffffff]][Z|±HH:MM]`).
+  - Slashed or dotted dates are rejected as ambiguous, never guessed.
+  - Date-only values are business-local calendar dates.
+  - Naive date-times are read in `source_timezone`; values with an offset are converted.
+  - Storage is the calendar date in the **business time zone captured on the dataset at upload**, plus `ordered_at`/`returned_at` (`timestamptz`, UTC) when a time was given.
+  - Nonexistent local times (spring-forward gap) are rejected (V-013). Ambiguous fall-back times use the first occurrence and are flagged V-044.
+  - The valid range is 2000-01-01 to (upload date in the business zone + 1 day).
+- **Money:** plain decimals with up to 4 places, stored as `NUMERIC(18,4)`. Negative values, separators, symbols, exponents, NaN and infinity are rejected.
+- **Quantities:** whole numbers from 1 to 100,000.
+- **Dimensions:** whitespace is collapsed and values are lowercased. Missing `channel` or `region` on order lines are stored as `unknown`.
+- **Currency column (orders, optional):** each value must be a 3-letter code equal to the business currency (V-017). The business currency is what gets stored.
+- **Text:** control and format characters are removed. `reason_text` is limited to 500 characters and is stored as untrusted data.
+
+### 10.4 Validation rules as built
+
+Codes, severities and descriptions live in `ISSUE_CODES` in `app/ingestion/contract.py` and are shown in the report.
+
+**Additions and changes to §2.6:**
+
+- **V-002:** structural CSV errors inside the file (for example an unterminated quote) reject that file.
+- **V-003:** row limits reject the file.
+- **V-017** (new): currency.
+- **V-044** (new): ambiguous local time, warning.
+- **V-035 / V-036, cumulative semantics:** the running total per order line, in `(return_date, return_id)` order, includes every earlier return that passed the other rules. A return is rejected when that total exceeds the line quantity or the line net value (`quantity × unit_price − discount_amount`).
+- **Evaluation order is deterministic:**
+  1. per-row parsing
+  2. duplicates (V-020 / V-021)
+  3. order consistency (V-037)
+  4. references (V-030, V-031, then V-032)
+  5. V-033
+  6. V-034
+  7. V-035
+  8. V-036
+  9. V-043 warnings
+
+  Each row receives at most one set-based error.
+- **Rejected rows cascade:** an order line whose customer or product was rejected fails V-030 or V-031, and its returns fail V-032.
+- **Dataset rejection:** if rejected rows exceed 5% of any file (V-099), or any file-level error occurs (V-002, V-003, V-006), or no valid order lines remain (V-007), the dataset becomes `rejected`. Issues and profiles are stored, but **no records are**.
+- **Issue storage:** issue counts are exact. At most 10,000 issue rows are stored per (file, code), and the full stored list can be exported as CSV.
+
+### 10.5 Processing and atomicity
+
+The `ingest_dataset` job (ADR-003 queue: `FOR UPDATE SKIP LOCKED`, 120 s lease with 30 s heartbeat, at most 3 attempts with exponential backoff, transient database errors retried) proceeds as follows:
+
+1. Mark the dataset `validating` (its own short transaction).
+2. In **one transaction**:
+   - Stream-decode each stored file and parse row by row.
+   - `COPY` typed rows into transaction-scoped temp staging tables.
+   - Run the set-based rules.
+   - Insert accepted rows into the canonical tables with `INSERT … SELECT`.
+   - Write file statistics, profiles and the final status.
+
+   PostgreSQL forbids `COPY FROM` into tables with row-level security, so issues are copied into a temp table and moved with one `INSERT … SELECT`, which is subject to the RLS `WITH CHECK`.
+3. Any exception rolls the whole transaction back. After the final attempt the dataset is set to `failed` with a generic `error_code` (`unexpected_error`, `transient_error`, …). No partial records exist in any case.
+4. A `failed` version does not block re-uploading the same files.
+
+**Provenance:** every record keeps `source_row` (header = row 1). `dataset_files` keeps the original SHA-256, size, sanitised filename, normalised headers, the mapping used and who confirmed it. Raw bytes are stored without personal-data columns, and are purged after 30 days (retention job, Phase 12).
+
+### 10.6 Schema (migration `0002`)
+
+| Table / change | Notes |
+|---|---|
+| `datasets` | Status ∈ `awaiting_mapping`, `queued`, `validating`, `ready`, `rejected`, `failed`. New columns: `source_timezone`, `business_timezone`, `currency`, `issue_counts` (exact counts by file and code), `error_code`, `completed_at`. `sales_rows` is renamed `orders_rows`. A trigger makes `ready`, `rejected` and `failed` rows immutable |
+| `dataset_files` | One per kind and dataset. Columns: `raw` (bytea), `headers`, `mapping`, confirmation, row statistics, `profile` |
+| `products`, `customers`, `order_lines`, `returns` | Primary key `(dataset_id, natural key)`. Composite foreign keys enforce references within a dataset. CHECK constraints duplicate the value rules. Insert-only for the app role |
+| `validation_issues` | Identity primary key (stable order). Insert-only |
+| `idempotency_keys` | Primary key `(business_id, user_id, key)`, 24 h |
+| `jobs` | System table: no RLS, never exposed through the API. The app role cannot change job identity, type or payload |
+
+All tenant tables have RLS select and insert policies keyed on `app.current_business_id`. The job worker sets only the business context.
+
+### 10.7 Endpoints
+
+| Method | Path | Permission | Notes |
+|---|---|---|---|
+| POST | `/businesses/{bid}/datasets` | `dataset:upload` | §10.1 |
+| GET | `/businesses/{bid}/datasets/{did}` | `dataset:read` | Dataset, files (mapping, statistics, profile) and the `issues` summary (file, code, severity, description, count) |
+| POST | `/businesses/{bid}/datasets/{did}/mapping` | `dataset:upload` | §10.2. Returns 202 |
+| GET | `/businesses/{bid}/datasets/{did}/issues` | `dataset:read` | `?file=&code=&limit=&cursor=` |
+| GET | `/businesses/{bid}/datasets/{did}/records/{orders\|products\|customers\|returns}` | `dataset:read` | Ready datasets only (else 409 `dataset_not_ready`). Ordered by `source_row`. Decimals are returned as strings |
+| GET | `/businesses/{bid}/datasets/{did}/export/{orders\|products\|customers\|returns\|issues}` | `dataset:read` | CSV attachment. Every cell starting with `= + - @`, tab or CR is prefixed with `'` (SEC-16). Built in a bounded spooled temp file |
+| PATCH | `/businesses/{bid}` | `business:update` (owner) | `{currency?, timezone?}`. A currency change returns 409 `currency_locked` once any dataset exists |

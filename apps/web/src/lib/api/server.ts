@@ -3,7 +3,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { cache } from "react";
 
-import type { Business, DatasetPage, Me } from "./types";
+import type { Business, DatasetDetail, DatasetPage, IssuePage, Me } from "./types";
 import { toApiProblem } from "./types";
 
 function backendUrl(): string {
@@ -44,6 +44,29 @@ export async function listDatasets(businessId: string): Promise<DatasetPage | nu
   return (
     await backendGet<DatasetPage>(
       `/api/v1/businesses/${encodeURIComponent(businessId)}/datasets?limit=20`,
+    )
+  ).data;
+}
+
+export async function getDataset(
+  businessId: string,
+  datasetId: string,
+): Promise<DatasetDetail | null> {
+  return (
+    await backendGet<DatasetDetail>(
+      `/api/v1/businesses/${encodeURIComponent(businessId)}/datasets/${encodeURIComponent(datasetId)}`,
+    )
+  ).data;
+}
+
+export async function listIssues(
+  businessId: string,
+  datasetId: string,
+  limit = 50,
+): Promise<IssuePage | null> {
+  return (
+    await backendGet<IssuePage>(
+      `/api/v1/businesses/${encodeURIComponent(businessId)}/datasets/${encodeURIComponent(datasetId)}/issues?limit=${limit}`,
     )
   ).data;
 }

@@ -5,9 +5,12 @@ from dataclasses import dataclass
 from datetime import date
 
 import httpx
+from fastapi import FastAPI
 from sqlalchemy import Engine, insert
 
 from app.auth.passwords import hash_password
+from app.ingestion.pipeline import ingest_dataset
+from app.jobs.worker import process_next_job
 from app.models import Business, Dataset, Membership, User
 
 FRONTEND_ORIGIN = "http://localhost:3000"
@@ -77,7 +80,10 @@ def create_dataset(
                 business_id=business_id,
                 version=version,
                 status="ready",
-                sales_rows=100 * version,
+                orders_rows=100 * version,
+                source_timezone="UTC",
+                business_timezone="UTC",
+                currency="USD",
                 date_min=date(2026, 1, 1),
                 date_max=date(2026, 6, 30),
                 uploaded_by=uploaded_by,
@@ -101,4 +107,38 @@ async def login(
     headers = await csrf_headers(client)
     return await client.post(
         "/api/v1/auth/login", json={"email": email, "password": password}, headers=headers
+    )
+
+
+async def run_jobs(app: FastAPI, limit: int = 20) -> int:
+    """Run due jobs synchronously, exactly as the lifespan worker would. Returns jobs run."""
+    ran = 0
+    while ran < limit and await process_next_job(
+        app.state.sessionmaker, {"ingest_dataset": ingest_dataset}, app.state.on_job_failure
+    ):
+        ran += 1
+    return ran
+
+
+def multipart(files: dict[str, bytes], **fields: str) -> dict[str, object]:
+    """httpx kwargs for a dataset upload; keys are file kinds (orders, products, ...)."""
+    return {
+        "files": {kind: (f"{kind}.csv", content, "text/csv") for kind, content in files.items()},
+        "data": fields,
+    }
+
+
+async def upload(
+    client: httpx.AsyncClient,
+    business_id: uuid.UUID,
+    files: dict[str, bytes],
+    *,
+    key: str | None = None,
+    **fields: str,
+) -> httpx.Response:
+    headers = {**await csrf_headers(client), "Idempotency-Key": key or uuid.uuid4().hex}
+    return await client.post(
+        f"/api/v1/businesses/{business_id}/datasets",
+        headers=headers,
+        **multipart(files, **fields),  # type: ignore[arg-type]
     )

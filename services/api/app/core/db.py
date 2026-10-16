@@ -51,3 +51,10 @@ async def set_rls_context(
         text("SELECT set_config('app.current_business_id', :bid, true)"),
         {"bid": str(business_id) if business_id else ""},
     )
+
+
+async def set_business_context(session: AsyncSession, business_id: UUID) -> None:
+    """RLS context for system work (the job worker) that acts for a business, not a user."""
+    await session.execute(
+        text("SELECT set_config('app.current_business_id', :bid, true)"), {"bid": str(business_id)}
+    )

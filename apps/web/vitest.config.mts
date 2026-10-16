@@ -12,7 +12,13 @@ export default defineConfig({
     restoreMocks: true,
     coverage: {
       provider: "v8",
-      include: ["src/lib/**/*.ts", "src/app/login/login-form.tsx", "src/components/logout-button.tsx"],
+      include: [
+        "src/lib/**/*.ts",
+        "src/app/login/login-form.tsx",
+        "src/components/logout-button.tsx",
+        "src/app/**/upload-form.tsx",
+        "src/app/**/mapping-review.tsx",
+      ],
       exclude: ["src/lib/api/schema.d.ts", "src/lib/api/server.ts"],
       thresholds: { lines: 80, branches: 80, functions: 80, statements: 80 },
     },

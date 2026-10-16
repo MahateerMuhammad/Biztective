@@ -86,7 +86,11 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Update Business
+         * @description Business currency and time zone (AMD-8). Currency is fixed once any dataset exists.
+         */
+        patch: operations["update_business_api_v1_businesses__business_id__patch"];
         trace?: never;
     };
     "/api/v1/businesses/{business_id}/audit-log": {
@@ -116,7 +120,8 @@ export interface paths {
         /** List Datasets */
         get: operations["list_datasets_api_v1_businesses__business_id__datasets_get"];
         put?: never;
-        post?: never;
+        /** Upload Dataset */
+        post: operations["upload_dataset_api_v1_businesses__business_id__datasets_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -132,6 +137,77 @@ export interface paths {
         };
         /** Get Dataset */
         get: operations["get_dataset_api_v1_businesses__business_id__datasets__dataset_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/businesses/{business_id}/datasets/{dataset_id}/export/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Csv
+         * @description CSV with spreadsheet-formula escaping (SEC-16), built into a bounded temp file.
+         */
+        get: operations["export_csv_api_v1_businesses__business_id__datasets__dataset_id__export__kind__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/businesses/{business_id}/datasets/{dataset_id}/issues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Issues */
+        get: operations["list_issues_api_v1_businesses__business_id__datasets__dataset_id__issues_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/businesses/{business_id}/datasets/{dataset_id}/mapping": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Mapping */
+        post: operations["confirm_mapping_api_v1_businesses__business_id__datasets__dataset_id__mapping_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/businesses/{business_id}/datasets/{dataset_id}/records/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Records */
+        get: operations["list_records_api_v1_businesses__business_id__datasets__dataset_id__records__kind__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -229,10 +305,99 @@ export interface components {
             /** Timezone */
             timezone: string;
         };
+        /** BusinessUpdate */
+        BusinessUpdate: {
+            /** Currency */
+            currency?: string | null;
+            /** Timezone */
+            timezone?: string | null;
+        };
         /** CsrfResponse */
         CsrfResponse: {
             /** Csrf Token */
             csrf_token: string;
+        };
+        /** DatasetDetail */
+        DatasetDetail: {
+            /** Business Timezone */
+            business_timezone: string;
+            /** Checksum Sha256 */
+            checksum_sha256: string | null;
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Currency */
+            currency: string;
+            /** Customers Rows */
+            customers_rows: number | null;
+            /** Date Max */
+            date_max: string | null;
+            /** Date Min */
+            date_min: string | null;
+            /** Error Code */
+            error_code: string | null;
+            /** Files */
+            files: components["schemas"]["DatasetFileOut"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Issues */
+            issues: components["schemas"]["IssueSummaryOut"][];
+            /** Orders Rows */
+            orders_rows: number | null;
+            /** Products Rows */
+            products_rows: number | null;
+            /** Returns Rows */
+            returns_rows: number | null;
+            /** Source Timezone */
+            source_timezone: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "awaiting_mapping" | "queued" | "validating" | "ready" | "rejected" | "failed";
+            /** Version */
+            version: number;
+        };
+        /** DatasetFileOut */
+        DatasetFileOut: {
+            /** Filename */
+            filename: string;
+            /** Headers */
+            headers: string[];
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "products" | "customers" | "orders" | "returns";
+            /** Mapping */
+            mapping: {
+                [key: string]: unknown;
+            };
+            /** Mapping Confirmed At */
+            mapping_confirmed_at: string | null;
+            /** Profile */
+            profile: {
+                [key: string]: unknown;
+            } | null;
+            /** Rows Accepted */
+            rows_accepted: number | null;
+            /** Rows Duplicate */
+            rows_duplicate: number | null;
+            /** Rows Rejected */
+            rows_rejected: number | null;
+            /** Rows Total */
+            rows_total: number | null;
+            /** Sha256 */
+            sha256: string;
+            /** Size Bytes */
+            size_bytes: number;
         };
         /** DatasetOut */
         DatasetOut: {
@@ -252,17 +417,17 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Orders Rows */
+            orders_rows: number | null;
             /** Products Rows */
             products_rows: number | null;
             /** Returns Rows */
             returns_rows: number | null;
-            /** Sales Rows */
-            sales_rows: number | null;
             /**
              * Status
              * @enum {string}
              */
-            status: "uploaded" | "validating" | "ready" | "rejected" | "deleted";
+            status: "awaiting_mapping" | "queued" | "validating" | "ready" | "rejected" | "failed";
             /** Version */
             version: number;
         };
@@ -271,12 +436,59 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** IssueOut */
+        IssueOut: {
+            /** Code */
+            code: string;
+            /** Column Name */
+            column_name: string | null;
+            /** Excerpt */
+            excerpt: string | null;
+            /** File Kind */
+            file_kind: string;
+            /** Id */
+            id: number;
+            /** Message */
+            message: string;
+            /** Row Number */
+            row_number: number | null;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "error" | "warning";
+        };
+        /** IssueSummaryOut */
+        IssueSummaryOut: {
+            /** Code */
+            code: string;
+            /** Count */
+            count: number;
+            /** Description */
+            description: string;
+            /** File */
+            file: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "error" | "warning";
+        };
         /** LoginRequest */
         LoginRequest: {
             /** Email */
             email: string;
             /** Password */
             password: string;
+        };
+        /** MappingConfirmation */
+        MappingConfirmation: {
+            /** Files */
+            files: {
+                [key: string]: {
+                    [key: string]: string | null;
+                };
+            };
         };
         /** MeResponse */
         MeResponse: {
@@ -310,6 +522,22 @@ export interface components {
         Page_DatasetOut_: {
             /** Items */
             items: components["schemas"]["DatasetOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** Page[IssueOut] */
+        Page_IssueOut_: {
+            /** Items */
+            items: components["schemas"]["IssueOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** RecordPage */
+        RecordPage: {
+            /** Items */
+            items: {
+                [key: string]: string | number | null;
+            }[];
             /** Next Cursor */
             next_cursor: string | null;
         };
@@ -474,6 +702,41 @@ export interface operations {
             };
         };
     };
+    update_business_api_v1_businesses__business_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BusinessUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_audit_log_api_v1_businesses__business_id__audit_log_get: {
         parameters: {
             query?: {
@@ -542,6 +805,39 @@ export interface operations {
             };
         };
     };
+    upload_dataset_api_v1_businesses__business_id__datasets_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_dataset_api_v1_businesses__business_id__datasets__dataset_id__get: {
         parameters: {
             query?: never;
@@ -560,7 +856,149 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DatasetOut"];
+                    "application/json": components["schemas"]["DatasetDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_csv_api_v1_businesses__business_id__datasets__dataset_id__export__kind__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+                kind: "orders" | "products" | "customers" | "returns" | "issues";
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CSV export */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_issues_api_v1_businesses__business_id__datasets__dataset_id__issues_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+                file?: ("orders" | "products" | "customers" | "returns" | "dataset") | null;
+                code?: string | null;
+            };
+            header?: never;
+            path: {
+                dataset_id: string;
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_IssueOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_mapping_api_v1_businesses__business_id__datasets__dataset_id__mapping_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MappingConfirmation"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_records_api_v1_businesses__business_id__datasets__dataset_id__records__kind__get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                dataset_id: string;
+                kind: "orders" | "products" | "customers" | "returns";
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordPage"];
                 };
             };
             /** @description Validation Error */

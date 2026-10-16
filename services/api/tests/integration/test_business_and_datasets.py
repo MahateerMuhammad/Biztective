@@ -42,7 +42,7 @@ async def test_dataset_detail(client: httpx.AsyncClient, owner_engine: Engine) -
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ready"
-    assert body["sales_rows"] == 100
+    assert body["orders_rows"] == 100
     assert body["date_min"] == "2026-01-01"
 
 
