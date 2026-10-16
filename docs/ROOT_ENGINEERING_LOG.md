@@ -160,7 +160,9 @@ See ROOT_MASTER_PLAN §11. Summary:
 
 ### Commit hash and GitHub push status
 
-*Pending at time of writing.* It is recorded by the Phase 1 bookkeeping note below, immediately after the commit and push are verified.
+- **Phase 1 commit:** `0a96153d98aa48bf923b4209942b6a7de1589245` (`docs: Phase 1 specification and architecture for ROOT 2.0`). Author: the repository owner's git identity, with no AI co-author trailer.
+- **Push:** `git push -u origin main` created the new branch `main` on `origin`. Verified with `git ls-remote origin refs/heads/main` = `0a96153d98aa48bf923b4209942b6a7de1589245`, which matches local `HEAD`.
+- **Bookkeeping commit:** this hash and push record were added in a follow-up `docs:` commit. Its hash and push verification are recorded at the start of the Phase 2 entry (AGENTS.md R-4).
 
 ### Next-phase dependencies (Phase 2)
 
