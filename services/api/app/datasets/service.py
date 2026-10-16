@@ -163,17 +163,33 @@ async def create_dataset(
 async def store_idempotent_response(
     db: AsyncSession, tenant: TenantContext, key: str, req_hash: str, response: StoredResponse
 ) -> None:
-    await db.execute(
-        insert(IdempotencyKey).values(
-            business_id=tenant.business_id,
-            user_id=tenant.user.id,
-            key=key,
-            request_hash=req_hash,
-            response_status=response.status,
-            response_body=response.body,
-            expires_at=datetime.now(UTC) + IDEMPOTENCY_TTL,
-        )
+    statement = insert(IdempotencyKey).values(
+        business_id=tenant.business_id,
+        user_id=tenant.user.id,
+        key=key,
+        request_hash=req_hash,
+        response_status=response.status,
+        response_body=response.body,
+        expires_at=datetime.now(UTC) + IDEMPOTENCY_TTL,
     )
+    stored = await db.scalar(
+        statement.on_conflict_do_update(
+            index_elements=["business_id", "user_id", "key"],
+            set_={
+                "request_hash": statement.excluded.request_hash,
+                "response_status": statement.excluded.response_status,
+                "response_body": statement.excluded.response_body,
+                "created_at": func.now(),
+                "expires_at": statement.excluded.expires_at,
+            },
+            where=IdempotencyKey.expires_at <= func.now(),
+        ).returning(IdempotencyKey.key)
+    )
+    if stored is None:
+        # Another critical POST may have claimed this key while this transaction
+        # was working. Raising rolls back its domain writes instead of saving an
+        # operation whose retry would replay somebody else's response.
+        raise ApiError(409, "idempotency_key_reuse", "This Idempotency-Key is already in use.")
 
 
 async def _enqueue_ingestion(

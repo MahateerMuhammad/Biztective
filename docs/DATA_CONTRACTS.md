@@ -263,6 +263,8 @@ Stored per revision in `customer_segments`. Segments for slicing in detection ar
 
 ## 6. Database schema
 
+> **Amended by AMD-3:** RLS is ENABLE, with a non-owner/non-superuser/non-BYPASSRLS runtime role enforced by readiness; FORCE below is the baseline. **Amended by AMD-4:** the identity/session column changes in ROOT_MASTER_PLAN §13 replace §6.1 where specified.
+
 All tenant-scoped tables have `business_id uuid NOT NULL REFERENCES businesses ON DELETE CASCADE`, RLS enabled and forced, and an index leading with `business_id`. `created_at timestamptz NOT NULL DEFAULT now()` is implied everywhere.
 
 ### 6.1 Identity and tenancy
@@ -288,6 +290,8 @@ All tenant-scoped tables have `business_id uuid NOT NULL REFERENCES businesses O
 | `products`, `customers`, `sales_lines`, `returns` | business_id, dataset_id, natural key + §2 columns | PK (dataset_id, natural key). Insert-only (no UPDATE grant) |
 
 ### 6.3 Analysis and investigation
+
+> **Amended by AMD-12 (Phase 5):** investigation tables as built are in §12.5.
 
 | Table | Key columns | Notes |
 |---|---|---|
@@ -414,6 +418,8 @@ Standard codes:
 
 ### 7.6 Investigations
 
+> **Amended by AMD-12 (Phase 5):** endpoints as built are in §12.6.
+
 | Method | Path | Permission | Notes |
 |---|---|---|---|
 | POST | `/businesses/{bid}/investigations` | `investigation:run` | `{dataset_id}` → 202. 409 if the dataset is not `ready` |
@@ -534,6 +540,8 @@ Envelope: `{seq, type, occurred_at, actor_kind, actor_user_id?, revision_id?, ca
 The LLM may read numbers in its input. It may not **write** digits or entity names outside placeholders.
 
 ### 9.2 Outputs (JSON Schema, strict, `additionalProperties: false`)
+
+> **Amended by AMD-12 (Phase 5):** `request_evidence` is a structured output (`select_tools`, §12.4), not provider tool calling. `synthesize_findings` has no `human_influence` field in Phase 5.
 
 **`prioritize_hypotheses`**
 ```json
@@ -792,3 +800,98 @@ Every analytics response carries `restrictions[]` with codes `missing_costs`, `i
 - `customer_segments`, `incidents` and `evidence_items`: insert-only, with RLS.
 - `refresh_dataset_statistics()` (AMD-11).
 - The `jobs.type` values now include `analyze_dataset`.
+
+## 12. Phase 5 investigation contracts (AMD-12)
+
+> **Amended by AMD-12 and AMD-13:** these are the implemented Phase 5 shapes. Human answers, corrections, findings acceptance and execution remain outside this phase.
+
+### 12.1 Scope and evidence facts
+
+The runtime supplies business, dataset, revision, incident, metric/slice, baseline/current windows, first-order date, as-of date and config. Tool arguments cannot override that scope. Queries execute in the tenant transaction. Results are `{facts: {field: {value, unit, kind?}}, detail: object}`. Units: `money`, `ratio`, `pp`, `count`, `number`, `entity`, `code`. Numbers are decimal strings except integer counts; undefined values are null. Entity kinds: category/product/region/channel/segment. A fractional rate change of `0.02` renders as `+2.0 pp`.
+
+Evidence retains IDs, revision/incident, kind, canonical parameters, query_version and SHA-256 result_hash. Tool evidence also has params_hash; unique `(revision_id, kind, params_hash)` caches immutable calculations. Parameters include incident scope. `investigation_evidence` links cached items with requested_by=detection/system/llm. Lookup/citations require the current investigation and incident link; hashes are checked before verification. Provider inputs contain aggregates, codes and opaque entity tokens only. Raw entity values, customer IDs, business descriptions, CSV free text and source rows never reach the provider.
+
+### 12.2 Strict read-only tools (query version 1)
+
+All argument objects forbid extra fields and coercion. No tenant IDs, entity values, SQL, Python, shell or arbitrary filters are accepted. Metric enum M: net_revenue/gross_margin_pct/refund_rate/discount_rate/active_customers/repeat_customer_rate/aov.
+
+| Tool | Required arguments | Output facts and semantics |
+|---|---|---|
+| metric_breakdown | `{metric:M, by:none/category/product/region/channel/customer_segment}` | total.baseline/current/change/adverse; values, additive, top_share, top.N.entity/baseline/current/adverse/share. Amounts and active counts are weekly averages; rates/AOV are ratios of sums. Positive adverse contributions define shares. Overlapping customer counts across product/category have no additive shares. |
+| period_comparison | `{metrics:M[]}`; 1–7 unique | metric.current/previous/change_abs/change_rel. Current versus preceding equal-length period; comparison_unavailable when prior starts before data. Zero denominators remain null. |
+| return_investigation | `{by:product/category/region/channel}` | Refund totals, reason shares/changes, quality and logistics shares, contributors.*, cohort.baseline_rate/current_rate/change and line counts. Cohorts require configured maturity; immature current data is restricted. |
+| segment_analysis | `{}` | segments.segment.active_baseline/active_current/active_change_rel/revenue_decline; established.* combines loyal/at_risk. Membership fixed at baseline end; later first buyers are new. |
+| customer_exposure | `{top_k:integer}`; 1–20 | customers.current/adverse, adverse.total, top_k, top_k.share, top1.share, exposed.segment, repeat_buyers.current. Revenue-decline basis except refund/discount incidents use excess refunds/discounts at slice baseline rate. Pseudonymous top-customer details are human-only. |
+| evidence_lookup | `{evidence_ids:UUID[]}`; 1–10 | Facts already linked to this investigation and incident. Foreign or unlinked IDs rejected. |
+| data_quality_check | `{checks:enum[]}`; 1–6 unique | zero_order_days, weekly_volume, near_duplicates, cancellations, missing_costs, immature_returns. Scoped counts, shares and weekly anomaly statistics; undefined ratios null. |
+
+Breakdowns retain ten detail rows plus remainder, with five leading rows exposed as facts. Six LLM-requested calls and forty evidence items per incident maximum; duplicate calls collapse. Catalog-required fixed calls run independently of model selection, so verdicts never depend on LLM choices.
+
+### 12.3 Hypothesis catalog 1.0.0
+
+All applicable templates run, always including data quality and external context. Table order breaks confidence ties. Every criterion records evidence_id, field, value and unit in basis; missing/null data is unknown.
+
+| Template | Fixed requirements | Data support (weight) | Explicit refutation |
+|---|---|---|---|
+| H_RETURNS_QUALITY | returns by product | Quality-share rise ≥ .10 (.4); top-product excess-refund share ≥ .50 (.3); mature cohort rise ≥ .02 (.3) | Quality-share rise < .02 and product criterion false |
+| H_FULFILLMENT | returns by region/channel | Logistics-share rise ≥ .10 (.5); leading region/channel excess-refund share ≥ .50 (.5) | Logistics rise < .02 and concentration false |
+| H_PRICE_DISCOUNT | discount_rate by product | Rate rise ≥ .02 (.6); top-product share ≥ .50 (.4) | Rate rise < .005 |
+| H_SEGMENT_SHIFT | segment analysis | Established active relative change ≤ −.15 (.5); established revenue-decline share ≥ .50 (.5) | Active change ≥ −.05 and decline share < .50 |
+| H_CONCENTRATION | exposure top_k=5 | Top-five share ≥ .50 (.6); top-one share ≥ .25 (.4) | Top-five share < .20 |
+| H_CHANNEL | incident metric by channel | ≥2 channels and leading adverse share ≥ .60 (1) | ≥2 channels and leading share < .40 |
+| H_DATA_QUALITY | all quality checks, exposure top_k=5 | Excess zero days/week ≥1 or ≥1 low-volume week (.4); duplicates ≥.01 (.3); top-customer share >.30 (.3) | Zero-day excess <.5, no low week, duplicates <.002, top-customer share <.10 |
+| H_EXTERNAL_CONTEXT | none | Human only | None |
+
+Every template except H_CHANNEL has an unanswered human support criterion (weight .3; external context 1): product/supplier change, fulfilment change, promotion, regular-customer change, key-account change, export problem or external event. No Phase 5 answer is inferred. H_SEGMENT_SHIFT never asserts churn. H_MIX_SHIFT is deferred.
+
+Data confidence is satisfied data-support weight divided by all data-support weight, half-even to four decimals. Human confidence is null; confidence equals data confidence (zero for human-only). Precedence: explicit refute → refuted; human-only → needs_human_context; unanswered human criterion with confidence [.3,.7) → needs_human_context; confidence ≥.7 → supported; confidence <.3 with all required evidence and data support known → refuted; otherwise inconclusive. Root-cause candidate is highest-confidence supported, then catalog order. Model priority affects presentation only.
+
+### 12.4 LLM and structured reports
+
+Strict JSON output models (extra fields forbidden) apply after provider schema validation:
+
+- prioritize_hypotheses: `{ranking:[{template,priority,rationale:[{text,evidence_refs}]}]}`; 1–8 applicable unique entries, priority 1–9, ≤3 rationales, text ≤300 characters, ≤6 refs.
+- select_tools: `{calls:[{tool,arguments,hypothesis,purpose}],done:boolean}`; ≤6 discriminated allowlisted calls with §12.2 arguments, applicable hypothesis, purpose ≤200 characters; ≤2 rounds/incident.
+- synthesize_findings: `{summary,root_causes:[{hypothesis_id,statement,evidence_refs}],alternatives_considered:[{hypothesis_id,why_not,evidence_refs}],caveats}`; summary ≤600 characters, ≤5 causes, ≤24 alternatives, ≤5 caveats; statements ≤400, other text ≤300; causes require 1–6 refs and supported hypotheses.
+
+Model numbers use `{{ev:<id>.<numeric_field>}}`; entities use approved `{{entity:<kind>:<hash>}}`. Critic rejects digits outside placeholders, unknown/cross-incident refs, absent/nonnumeric fields, raw known entity names, malformed placeholders, markup, unsupported causes and direction/sign contradictions. Tool sanity rejects nonfinite values, impossible counts/shares and invalid decompositions. One repair then deterministic fallback. Source observations are code-generated, separate from hypotheses and narrative.
+
+Rendered segments are `{text}`, `{value,evidence_id,field}` or `{entity,kind}`; numeric display comes from evidence. Incident reports include observations, evidence IDs, hypotheses with status/confidence/criteria/basis, root_cause_hypothesis_id, context_requests and data_gaps. Findings return source, label and rendered summary/causes/alternatives/caveats. **Amended by AMD-14:** the label explicitly identifies AI interpretation, which is separate from deterministic source facts.
+
+### 12.5 Persistence and workflow
+
+Migration 0004 adds tenant tables with business_id, RLS, business-leading indexes and cascading relationships:
+
+| Table | Essential fields / constraints |
+|---|---|
+| investigations | dataset/revision, status, phase, llm_mode/disabled_reason, graph/catalog versions, last_seq, error_code, starter/timestamps. Status queued/running/completed/completed_no_incidents/insufficient_data/failed; successful terminal rows immutable. |
+| investigation_events | investigation, seq, type, actor_kind, payload, dedupe_key, timestamp; unique investigation+seq and investigation+dedupe_key; append-only. |
+| hypotheses | investigation/incident, template/catalog version, priority, source, rationale; unique investigation+incident+template. |
+| hypothesis_evaluations | hypothesis, status/confidences, criteria, evaluated_at; one/hypothesis, confidence [0,1]. |
+| investigation_evidence | investigation+evidence primary key, incident, requested_by; append-only. |
+| clarifications | investigation, incident/key, hypothesis, criterion, trigger, question_spec; status open only. |
+| findings | investigation, round, content/rendered, source, llm_call_id; unique investigation+round, Phase 5 round 1. |
+| llm_calls | investigation, task/attempt, provider/model/prompt_version, input_hash/input/output, stop_reason, token counts, latency, validation/error_code; validation accepted/repaired/invalid/error. |
+
+Graph: initialize → select_incident → generate_hypotheses → select_tools → retrieve_evidence → verify_evidence → detect_missing_context → select_incident; after incidents, synthesize_output → finalize. Evidence selection loops at most once more. No incidents/insufficient data finalize directly. Context triggers/caps follow ARCHITECTURE §7.2 without interrupts.
+
+Durable run_investigation jobs resume PostgreSQL checkpoints, thread_id=investigation ID, synchronous node checkpoints. State contains IDs/counters/validated enum requests, no datasets. Checkpoint DDL is frozen into Alembic; no runtime DDL. Node deduplication prevents duplicate output after restart. Recursion limit 120; model limits 40 calls, 200,000 tokens, 60 seconds/call, 300-second investigation LLM deadline. Transient timeout/429/5xx retries twice, retry-after/backoff capped at ten seconds. Exhaustion opens the per-investigation circuit breaker and switches to deterministic output. Usage and fallback events persist.
+
+### 12.6 API v1
+
+Paths relative to `/api/v1/businesses/{business_id}`. Read permission is investigation:read (all roles); run is investigation:run (owner/analyst). Membership required, cross-tenant IDs return 404.
+
+**Amended by AMD-14:** POST `/investigations` requires `Idempotency-Key` in the §10.1 format. The original 202 response is replayed for 24 hours even after completion. A different body or operation under the same key returns 409 `idempotency_key_reuse`; expired keys are renewed atomically. An active dataset investigation is deduplicated independently of the request key.
+
+| Method/path | Permission | Response |
+|---|---|---|
+| POST /investigations | run | `{dataset_id:UUID}` →202 summary, binds finished analysis and deduplicates active starts. 409 analysis_not_ready, 429 after 20 starts/business/hour. |
+| GET /investigations | read | Optional dataset_id, limit 1–100/default20; newest-first `{items:summary[]}`. |
+| GET /investigations/{id} | read | Summary, currency, usage (calls/tokens/fallbacks/evidence), restrictions, incidents, findings. |
+| GET /investigations/{id}/events | read | after_seq≥0, limit1–500/default200; ordered `{items:[{seq,type,actor_kind,occurred_at,payload}],last_seq}`. |
+| POST /investigations/{id}/retry | run | Failed→202 `{id,status:queued}`, resumes checkpoint; other statuses 409. |
+| GET /evidence/{id} | read | ID/kind/revision/incident/query_version, params/params_hash, result/result_hash, integrity boolean, timestamp. |
+
+Summary: id, dataset_id, revision_id, status, phase, llm_mode/disabled_reason, error_code, graph/catalog versions, last_seq, created/started/completed timestamps. No answering, cancellation, human review or external-write endpoints in Phase 5.
+
+**AMD-13 budget and execution refinement:** successful calls record provider-reported token usage. Failures or absent usage charge the UTF-8 bytes of input and schema, 1,024 bytes of protocol overhead and the requested output reservation. Retries and repair attempts consume this same persisted budget. The entire workflow has a 600-second runtime deadline, including deterministic tools and database work, and a per-investigation PostgreSQL advisory lock serializes concurrent workers.

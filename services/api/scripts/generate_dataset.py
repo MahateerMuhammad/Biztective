@@ -85,11 +85,12 @@ class Options:
     start: date
     noise: float
     pii_column: bool
-    scenarios: tuple[str, ...] = ()  # e.g. ("return_spike",)
+    scenarios: tuple[str, ...] = ()  # e.g. ("return_spike",), ("discount_spike",)
     spike_return_rate: float = 0.35  # return probability of planted lines
 
 
-SCENARIOS = frozenset({"return_spike"})
+SCENARIOS = frozenset({"return_spike", "discount_spike"})
+DISCOUNT_SPIKE_SHARE = 0.35  # discount on planted lines in the last 4 weeks
 
 
 def _money(value: float) -> Decimal:
@@ -119,6 +120,7 @@ def generate_with_manifest(options: Options) -> tuple[dict[str, bytes], dict[str
     planted = products[expected_revenue.index(max(expected_revenue))]  # top seller by revenue
     spike_start = end - timedelta(days=27)  # the last 4 complete weeks
     spike = "return_spike" in options.scenarios
+    discount_spike = "discount_spike" in options.scenarios
 
     customers: list[tuple[str, date, str, str]] = []
     for i in range(1, options.customers + 1):
@@ -145,6 +147,9 @@ def generate_with_manifest(options: Options) -> tuple[dict[str, bytes], dict[str
                 discount = (
                     _money(float(unit_price) * qty * 0.1) if rng.random() < 0.15 else Decimal(0)
                 )
+                if discount_spike and product[0] == planted[0] and day >= spike_start:
+                    # No extra random draw: other scenarios stay byte-identical.
+                    discount = _money(float(unit_price) * qty * DISCOUNT_SPIKE_SHARE)
                 line = (
                     f"L{line_seq:07d}",
                     f"O{order_seq:06d}",
@@ -238,7 +243,7 @@ def generate_with_manifest(options: Options) -> tuple[dict[str, bytes], dict[str
             "planted_category": str(planted[2]),
             "spike_start": spike_start.isoformat(),
         }
-        if spike
+        if spike or discount_spike
         else {}
     )
     return files, manifest

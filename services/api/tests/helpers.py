@@ -10,7 +10,6 @@ from sqlalchemy import Engine, insert
 
 from app.auth.passwords import hash_password
 from app.jobs.worker import process_next_job
-from app.main import JOB_HANDLERS
 from app.models import Business, Dataset, Membership, User
 
 FRONTEND_ORIGIN = "http://localhost:3000"
@@ -114,7 +113,7 @@ async def run_jobs(app: FastAPI, limit: int = 20) -> int:
     """Run due jobs synchronously, exactly as the lifespan worker would. Returns jobs run."""
     ran = 0
     while ran < limit and await process_next_job(
-        app.state.sessionmaker, JOB_HANDLERS, app.state.on_job_failure
+        app.state.sessionmaker, app.state.job_handlers, app.state.on_job_failure
     ):
         ran += 1
     return ran

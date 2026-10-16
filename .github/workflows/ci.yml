@@ -63,6 +63,9 @@ jobs:
         run: |
           uv run pytest --cov --cov-fail-under=85
           uv run coverage report --include='app/auth/*,app/tenancy/*' --fail-under=95
+          uv run coverage report --include='app/analytics/*' --fail-under=95
+          uv run coverage report --include='app/investigation/verification.py' --fail-under=95
+          uv run coverage report --include='app/investigation/critic.py' --fail-under=95
       - name: OpenAPI contract is up to date
         run: |
           uv run python -m scripts.export_openapi

@@ -50,6 +50,24 @@ After validation, ROOT analyses each ready dataset automatically. Open **View an
 - deterministic incidents, each with its source-record evidence
 - any data limitations (for example missing costs) that make a figure unavailable
 
+Phase 5 adds backend investigation APIs under `/api/v1/businesses/{business_id}/investigations`.
+POST a ready `dataset_id` after its analysis finishes; GET the investigation and its cursor-based
+`/events` to inspect source observations, competing hypotheses, verified evidence and open context
+requests. The workflow checkpoints to PostgreSQL after every node. No human-answer, recovery-action
+or investigation UI is included in this phase.
+
+Investigations run deterministically by default. For Anthropic, set `LLM_PROVIDER=anthropic` and
+`ANTHROPIC_API_KEY` in the backend environment. Model output cannot change analytical facts or run
+external actions. `LLM_MAX_CALLS`, `LLM_MAX_TOKENS`, `LLM_DEADLINE_SECONDS` and
+`INVESTIGATION_TIMEOUT_SECONDS` bound execution. To run the separate live integration test:
+
+```bash
+ROOT_LIVE_LLM_TESTS=1 uv run pytest tests/investigation/test_live_model.py -v
+```
+
+It also requires the normal test database variables and an `ANTHROPIC_API_KEY`. Default tests use
+scripted model responses and do not call the provider.
+
 The browser only talks to the Next.js origin. `/api/v1/*` is rewritten to the backend, so session
 cookies stay first-party. The web process connects to PostgreSQL as `root_app`, a role with row-level
 security and no DDL rights; `/api/v1/readyz` reports not-ready if it is pointed at a privileged role.

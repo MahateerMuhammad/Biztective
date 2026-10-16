@@ -26,6 +26,14 @@ TENANT_TABLES = (
     "customer_segments",
     "incidents",
     "evidence_items",
+    "investigations",
+    "investigation_events",
+    "hypotheses",
+    "hypothesis_evaluations",
+    "investigation_evidence",
+    "clarifications",
+    "findings",
+    "llm_calls",
 )
 
 
@@ -120,6 +128,22 @@ def test_audit_insert_for_foreign_business_is_rejected(
         "VALUES (gen_random_uuid(), gen_random_uuid(), 'owner')",
         "DELETE FROM sessions",
         "CREATE TABLE intruder (id int)",
+        "UPDATE evidence_items SET result = '{}'",
+        "UPDATE investigations SET business_id = gen_random_uuid()",
+        "UPDATE investigations SET revision_id = gen_random_uuid()",
+        "DELETE FROM investigations",
+        "UPDATE investigation_events SET payload = '{}'",
+        "DELETE FROM investigation_events",
+        "UPDATE hypotheses SET template = 'H_CHANNEL'",
+        "UPDATE hypothesis_evaluations SET status = 'supported'",
+        "DELETE FROM investigation_evidence",
+        "UPDATE clarifications SET status = 'open'",
+        "UPDATE findings SET content = '{}'",
+        "UPDATE llm_calls SET output = NULL",
+        "DELETE FROM llm_calls",
+        "DELETE FROM langgraph.checkpoints",
+        "UPDATE langgraph.checkpoint_migrations SET v = 0",
+        "CREATE TABLE langgraph.intruder (id int)",
     ],
 )
 def test_app_role_lacks_privileges(

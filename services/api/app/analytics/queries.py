@@ -79,7 +79,9 @@ async def load_segment_map(session: AsyncSession, segments: Iterable[tuple[str, 
     await session.execute(text("ANALYZE analytics_segment_map"))
 
 
-def _grouping(dimensions: Sequence[str], week_expr: str | None) -> tuple[str, str, str]:
+def _grouping(
+    dimensions: Sequence[str], week_expr: str | None, where_dimension: str | None = None
+) -> tuple[str, str, str]:
     """SELECT fragment, GROUPING SETS clause and the extra joins needed."""
     base = [week_expr] if week_expr else []
     sets = [f"({', '.join(base)})"] + [
@@ -90,9 +92,10 @@ def _grouping(dimensions: Sequence[str], week_expr: str | None) -> tuple[str, st
         select.append(f"{DIMENSION_SQL[d]} AS dim_{d}")
         select.append(f"GROUPING({DIMENSION_SQL[d]}) AS g_{d}")
     joins = []
-    if "customer_segment" in dimensions:
+    needed = {*dimensions, where_dimension}
+    if "customer_segment" in needed:
         joins.append("LEFT JOIN analytics_segment_map sm ON sm.customer_id = ol.customer_id")
-    if "acquisition_channel" in dimensions:
+    if "acquisition_channel" in needed:
         joins.append(
             "JOIN customers c ON c.dataset_id = ol.dataset_id AND c.customer_id = ol.customer_id"
         )
@@ -115,17 +118,23 @@ async def aggregate(
     *,
     dimensions: Sequence[str] = (),
     by_week: bool = False,
+    where: tuple[str, str | None] | None = None,
 ) -> dict[SliceRow, Totals]:
-    """Totals per (week|None, dimension, value) for lines and returns in [start, end].
+    """Totals per (week|None, dimension, value) for lines and returns in [start, end],
+    optionally restricted to one slice (`where` = (dimension, value)).
 
     Two statements regardless of how many dimensions are requested."""
     unknown = set(dimensions) - DIMENSION_SQL.keys()
     if unknown:
         raise ValueError(f"unsupported dimensions: {sorted(unknown)}")
-    params = {"d": dataset_id, "start": start, "end": end}
+    predicate, extra = slice_filter(*where) if where else ("TRUE", {})
+    where_dimension = where[0] if where else None
+    params = {"d": dataset_id, "start": start, "end": end, **extra}
 
     select, sets, joins = _grouping(
-        dimensions, "date_trunc('week', ol.order_date)::date" if by_week else None
+        dimensions,
+        "date_trunc('week', ol.order_date)::date" if by_week else None,
+        where_dimension,
     )
     period_start = "date_trunc('week', ol.order_date)::date" if by_week else "CAST(:start AS date)"
     # Each customer's first order comes from a window over the same scan (no aggregate join
@@ -153,7 +162,7 @@ async def aggregate(
             FROM ol
             JOIN products p ON p.dataset_id = ol.dataset_id AND p.product_id = ol.product_id
             {joins}
-            WHERE ol.order_date BETWEEN :start AND :end
+            WHERE ol.order_date BETWEEN :start AND :end AND {predicate}
             GROUP BY GROUPING SETS ({sets})
         """),  # noqa: S608 - fragments come from DIMENSION_SQL, values are bound
         params,
@@ -174,7 +183,9 @@ async def aggregate(
         )
 
     select, sets, joins = _grouping(
-        dimensions, "date_trunc('week', r.return_date)::date" if by_week else None
+        dimensions,
+        "date_trunc('week', r.return_date)::date" if by_week else None,
+        where_dimension,
     )
     returns = await session.execute(
         text(f"""
@@ -193,7 +204,7 @@ async def aggregate(
                 AND ol.order_line_id = r.order_line_id
             JOIN products p ON p.dataset_id = ol.dataset_id AND p.product_id = ol.product_id
             {joins}
-            WHERE r.dataset_id = :d AND r.return_date BETWEEN :start AND :end
+            WHERE r.dataset_id = :d AND r.return_date BETWEEN :start AND :end AND {predicate}
             GROUP BY GROUPING SETS ({sets})
         """),  # noqa: S608
         params,

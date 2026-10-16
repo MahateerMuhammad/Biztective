@@ -516,5 +516,5 @@ def test_unknown_config_and_dimension_are_rejected() -> None:
     from app.analytics.queries import slice_filter
 
     assert slice_filter("overall", None) == ("TRUE", {})
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="DROP TABLE"):
         slice_filter("price; DROP TABLE x", "1")

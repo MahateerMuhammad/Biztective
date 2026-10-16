@@ -65,6 +65,8 @@
 
 ### 4.1 Registration and login
 
+> **Amended by AMD-4:** email is lowercase text with a CHECK and unique index, not `citext`. The unused session user-agent/IP/CSRF-secret fields and user lockout counters are omitted; `auth_attempts` is the throttle source. Registration and membership lifecycle remain deferred under AMD-8.
+
 - Email is normalised (trim, lowercase) and stored as `citext`. The password is checked for length and against the email. Argon2id hash.
 - Login: look up the user. If absent, verify against a dummy hash (equal timing). On success, revoke any pre-auth session, create a new session token (`secrets.token_urlsafe(32)`), store `sha256(token)`, set the cookie, and record an audit entry.
 
@@ -76,6 +78,8 @@
 - Sessions are bound loosely to a `user_agent_hash`: a change is logged but not enforced, to avoid false lockouts.
 
 ### 4.3 CSRF
+
+> **Amended by AMD-4:** use the signed double-submit nonce cookie and session-bound HMAC defined in ROOT_MASTER_PLAN §13 AMD-4; the formula below is historical baseline only.
 
 `GET /auth/csrf` returns `token = base64(HMAC_SHA256(session.csrf_secret, session_id_hash))`. Pre-login, a temporary secret in a `__Host-root_csrf` cookie is used. The token is checked in constant time on POST, PUT, PATCH and DELETE. A missing or invalid token → 403 `csrf_failed`.
 
@@ -108,6 +112,8 @@
 
 > **Amended by AMD-10 (implemented in Phase 4):** `analysis:run` exists, granted to owner and analyst. `analytics:read` is granted to owner, analyst and viewer.
 
+> **Amended by AMD-12 (implemented in Phase 5):** `investigation:read` and `investigation:run` exist as listed. `investigation:cancel` is not yet implemented.
+
 ### 5.2 Enforcement
 
 - Each FastAPI route declares `Depends(require_permission("…"))`. A startup check and test T-16 fail if any `/api/v1/businesses/**` route lacks one.
@@ -115,6 +121,8 @@
 - The LLM and the graph run with the investigating business's tenant context and **no user permissions**. They cannot call approval or execution code. That code lives in `recovery/approvals.py` and `jobs` handlers, which are reachable only from authenticated API routes and the executor.
 
 ## 6. Tenant isolation
+
+> **Amended by AMD-3:** runtime RLS is ENABLE rather than FORCE, with readiness refusing owner, superuser or BYPASSRLS roles. Tenant policies use `NULLIF(current_setting('app.current_business_id', true), '')::uuid`. **AMD-12/AMD-13:** checkpoint tables have no RLS and are worker-only, accessed through a tenant-scoped investigation ID, a per-investigation advisory lock and a whole-run timeout. Imported business text never enters Phase 5 model inputs; tools expose only aggregate facts and opaque references.
 
 - **Database roles:**
   - `root_owner` owns the schema and runs migrations.

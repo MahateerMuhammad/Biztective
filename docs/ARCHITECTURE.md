@@ -211,6 +211,8 @@ Hypotheses come from a versioned **catalog** of templates. Applicability rules s
 
 ### 6.2 Hypothesis catalog v1
 
+> **Amended by AMD-12 (Phase 5):** `H_CUSTOMER_CHURN` is renamed `H_SEGMENT_SHIFT`; `H_MIX_SHIFT` is deferred. The catalog as built is in DATA_CONTRACTS §12.3.
+
 | Template | Applicable metrics | Claim | Required evidence tools |
 |---|---|---|---|
 | `H_RETURNS_QUALITY` | refund_rate, gross_margin_pct, net_revenue | A product or category quality problem drives returns | `reason_mix_shift`, `contribution_by_dimension(product)`, `cohort_return_rate` |
@@ -226,6 +228,8 @@ Hypotheses come from a versioned **catalog** of templates. Applicability rules s
 Applicability: every template whose metric list contains the incident's metric is a candidate. `H_DATA_QUALITY` and `H_EXTERNAL_CONTEXT` are always candidates. At least two competing candidates are always investigated.
 
 ### 6.3 Evidence tools (registry, ADR-004)
+
+> **Amended by AMD-12 (Phase 5):** the tool list as built is `metric_breakdown`, `period_comparison`, `return_investigation`, `segment_analysis`, `customer_exposure`, `evidence_lookup` and `data_quality_check` (DATA_CONTRACTS §12.2).
 
 Each tool has a Pydantic parameter model, a parameterised SQL query (dimensions resolved through an allowlist and never interpolated from input), a deterministic Python post-processor, and an output model. The tools:
 
@@ -248,6 +252,8 @@ Evidence item record (DATA_CONTRACTS §6): `tool`, `params` (canonical JSON), `r
 Limits: ≤ 6 LLM-requested tool calls per hypothesis and ≤ 40 evidence items per incident.
 
 ### 6.4 Verification and confidence (deterministic)
+
+> **Amended by AMD-12 (Phase 5):** a data criterion without evidence is *unknown*, and a hypothesis with an unknown data criterion is `inconclusive` rather than refuted by low confidence.
 
 Each template defines criteria `C_i` with weight `w_i`, a polarity (`support` or `refute`) and an evaluation function over evidence (and over human context for criteria marked `source=human`). Example for `H_RETURNS_QUALITY`:
 
@@ -342,6 +348,8 @@ LangGraph re-executes an interrupted node from its start on resume. Therefore co
 `llm/gateway.py` exposes `generate(task, input_model, output_model, tools?) -> output_model`. Responsibilities: provider call through the official SDK with JSON-schema structured output, timeout (60 s), transient-error retry (2), budget check (NFR-10), recording to `llm_calls`, and running the validation pipeline. Temperature is the provider's lowest deterministic setting. Prompts are versioned files `llm/prompts/<task>.v<N>.md`.
 
 ### 8.2 LLM tasks
+
+> **Amended by AMD-12 (Phase 5):** `request_evidence` returns tool requests as structured JSON (no provider tool calling). `phrase_clarification` and `propose_strategies` are not used in Phase 5.
 
 | Task | Input | Output | Deterministic fallback |
 |---|---|---|---|
@@ -523,6 +531,8 @@ The state holds **IDs and small statuses only**. Domain tables are the source of
 
 ### 12.2 Graph and transitions
 
+> **Amended by AMD-12 (Phase 5):** the Phase 5 graph has no interrupts: `initialize → select_incident → generate_hypotheses → select_tools → retrieve_evidence → verify_evidence → detect_missing_context → … → synthesize_output → finalize`.
+
 ```
 START → load_context → compute_metrics → detect_incidents
 detect_incidents ─(no incidents)→ finalize[completed_no_incidents]
@@ -563,6 +573,8 @@ any node ─(unhandled exception)→ error handler: investigation failed (recove
 | `finalize` | deterministic | terminal status |
 
 ### 12.4 Checkpointing
+
+> **Amended by AMD-13 (Phase 5 completion audit):** a session advisory lock on the checkpoint connection serializes each investigation across workers. Checkpoint loading, lock acquisition and graph execution share a configurable 600-second whole-run timeout (`workflow_timeout` on expiry), independent of the LLM deadline. The Phase 5 graph has no human interrupts; its acceptance target is structured completion from uploaded data in deterministic and fake-provider modes, with a separate opt-in live test.
 
 - `langgraph-checkpoint-postgres` `AsyncPostgresSaver` on the same database, in a dedicated schema `langgraph` (its tables are created by its `setup()` during migration). `thread_id = investigation_id`.
 - Checkpoints contain IDs only (no secrets or PII). RLS does not apply to the checkpoint schema. Access is only through the worker with a thread ID loaded from a tenant-scoped investigation row.

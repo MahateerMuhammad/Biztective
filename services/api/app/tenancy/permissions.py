@@ -17,6 +17,8 @@ class Permission(StrEnum):
     AUDIT_READ = "audit:read"
     ANALYTICS_READ = "analytics:read"
     ANALYSIS_RUN = "analysis:run"
+    INVESTIGATION_READ = "investigation:read"
+    INVESTIGATION_RUN = "investigation:run"
 
 
 ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
@@ -28,9 +30,16 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.DATASET_UPLOAD,
             Permission.ANALYTICS_READ,
             Permission.ANALYSIS_RUN,
+            Permission.INVESTIGATION_READ,
+            Permission.INVESTIGATION_RUN,
         }
     ),
     "viewer": frozenset(
-        {Permission.BUSINESS_READ, Permission.DATASET_READ, Permission.ANALYTICS_READ}
+        {
+            Permission.BUSINESS_READ,
+            Permission.DATASET_READ,
+            Permission.ANALYTICS_READ,
+            Permission.INVESTIGATION_READ,
+        }
     ),
 }

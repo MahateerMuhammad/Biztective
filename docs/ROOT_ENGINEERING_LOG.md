@@ -819,3 +819,172 @@ Recorded at the start of the next phase entry, and reported in the session summa
 - The LLM and orchestration phase consumes `incidents`, `evidence_items` and `customer_segments` by revision.
 - The hypothesis catalog adds evidence tools (contribution and mix decomposition) on top of `queries.aggregate`.
 - The owner should confirm the CI results for the pushed commits.
+
+---
+
+## Phase 5 — Stateful evidence-backed investigations
+
+- **Date:** 2026-10-17
+- **Starting point:** Phase 4 commit `6b14c2a` plus Claude's uncommitted Phase 5 implementation. The user explicitly authorized auditing, finishing and committing this work with multiple coding agents. No pre-existing changes were discarded. Phase 6 was not started.
+- **Scope:** AMD-12, AMD-13 and AMD-14: the remaining deterministic hypothesis/evidence core and a persistent LangGraph investigation API. Human answers, interrupts, corrections, replay UI, recovery approval and external action execution remain outside this phase.
+
+### Historical acceptance reconciliation
+
+The complete engineering history and all seven docs were read before the completion audit. Earlier log sections remain unchanged.
+
+- Phase 2/3 CI evidence is still **unobserved**, not a pass. A git push or local test does not establish GitHub Actions success.
+- Phase 3 ingestion timings were local, not the CI-hardware measurement required by baseline AC-4.5. CI/production performance remains unverified.
+- Phase 4's "AC-6.1 met on 5+5 seeds" did not establish the required 20-seed calibration. This session expands both available planted scenarios (returns and discount) to 20 seeds each, with seed-dependent date offsets, and evaluates 20 stationary controls. Original five zero-incident regressions and their assertions remain unchanged. Other baseline generator scenarios are not implemented and are not claimed as calibrated.
+- Charts were deferred by AMD-10; accessibility scans and the full dashboard remain in hardening. This session does not certify unexecuted historical gates.
+- Phase 4 hash/push verification was left pending for the next phase. No prior push verification is inferred here; the Phase 5 push result is recorded below.
+
+### Technical decisions and reasons
+
+Three parallel coding agents audited the LLM boundary, workflow durability/API, and deterministic tools/contracts. The root agent coordinated fixes, full regression, performance, generated API contracts, documentation and Git.
+
+- Reuse the existing API, tenant context, PostgreSQL queue and analytics functions. One LLM provider adapter, no separate LLM agents or extra services.
+- Freeze the library checkpoint DDL in Alembic `0004`; a migration test compares the recorded migration list with the installed library. Runtime never calls checkpoint setup/DDL.
+- Cache immutable evidence by revision, tool kind and canonical parameter hash, with per-investigation links. Required catalog evidence runs regardless of LLM selections, so model phrasing and prioritization cannot change analytical verdicts.
+- Missing data is unknown, not refutation. Open context requests are persisted and returned without a human interrupt in this phase.
+- Runtime and budget bounds were documented in AMD-13 before the new whole-run timeout/lock implementation. AMD-14 documents durable start-idempotency format, interpretation labels and remaining phase numbering.
+
+### Files created / changed
+
+- `services/api/app/investigation/`: catalog, typed tool registry, facts, verification, Critic, rendering, LLM contracts, persistence, graph, runtime, output and router.
+- `services/api/app/llm/`: provider, gateway, provider-safe schema generation and three versioned prompts.
+- Migration `0004_investigations.py`; domain models, permissions, application wiring, job types and typed configuration.
+- Existing analytics query helpers support incident-scoped read-only breakdowns. The generator adds a deterministic discount scenario for the new hypothesis tests.
+- Shared idempotency storage now renews expired keys atomically and rejects concurrently claimed active keys, rolling back domain writes on conflict.
+- Investigation/unit/security/migration/performance tests and scripted model helpers. Generated `openapi.json` and frontend TypeScript types. CI enforces the existing 95% analytics, verification and Critic coverage requirements.
+- Contracts §12 added; architecture/security/test-strategy amendment notes, README and environment example updated.
+
+### Graph transitions and execution flow
+
+```text
+POST investigation (permission + Idempotency-Key)
+  -> tenant lock -> replay or finished-analysis check -> investigation + event + job (one tx)
+run_investigation
+  -> whole-run timeout -> tenant-scoped investigation -> dedicated checkpoint connection/lock
+  -> initialize -> select_incident -> generate_hypotheses -> select_tools -> retrieve_evidence
+       retrieve_evidence -> select_tools (bounded extra round) | verify_evidence
+       verify_evidence -> detect_missing_context -> select_incident
+  -> synthesize_output -> finalize
+initialize -> finalize directly for insufficient_data / completed_no_incidents
+```
+
+Each node commits its domain effects and events atomically; LangGraph then saves its checkpoint synchronously. Deterministic IDs/natural keys and persisted selections make replay after commit-before-checkpoint safe. State contains IDs, counters, enums and validated requests, not dataset rows. An investigation-level PostgreSQL session advisory lock prevents overlapping lease workers from executing the same graph concurrently.
+
+### Tool contracts and evidence validation
+
+Seven read-only tools use strict Pydantic argument models with forbidden extra fields:
+
+| Tool | Purpose |
+|---|---|
+| `metric_breakdown` | Exact metric retrieval and contribution by allowed dimension |
+| `period_comparison` | Equal-length current/previous periods |
+| `return_investigation` | Reason mix, refund contributors and matured cohorts |
+| `segment_analysis` | Baseline lifecycle segments and changes |
+| `customer_exposure` | Customers/product exposure and concentration |
+| `evidence_lookup` | Evidence already linked to this investigation and incident |
+| `data_quality_check` | Missing activity, anomalies, near duplicates, cancellations and costs |
+
+Business, dataset, revision and incident scope come from the runtime, never the model. SQL values are bound; identifiers use server allowlists. No model output is executed as code. Facts use exact Decimal arithmetic in the existing 60-digit context, including extreme ratios.
+
+Validation: typed request -> scoped deterministic query -> numerical sanity/decomposition checks -> canonical hash and immutable evidence -> hash verification -> catalog criteria and confidence -> supported candidate selection -> narrative schema, citation/placeholder/status/direction checks -> server-rendered evidence values. A corrupt evidence item is excluded from verdicts, model inputs and source observations. LLM prose carries an interpretation label; code-generated observations remain separate.
+
+### Security, retry and error handling
+
+- All new routes declare permissions; all new tenant tables have RLS under AMD-3. Cross-tenant route and direct-database tests cover the new tables. Checkpoints remain worker-only in the dedicated schema.
+- Imported business names, CSV text, dimension values and customer/product identifiers do not enter model requests. Twenty distinct imported injection directives are persisted via normal uploads and checked against actual captured model requests. Other-tenant and business-description sentinels are absent.
+- Critic rejects unsupported causes/citations, invalid numeric fields, contradictory signed claims, Unicode digits and forged internal markers. Entity placeholders are scoped to the incident's linked evidence.
+- One repair attempt for invalid model output, then deterministic fallback. Transient provider failures receive at most two retries with bounded backoff; exhausted retries open the investigation's deterministic circuit breaker. Usage/error records contain sanitized codes, not raw provider errors.
+- Calls, token reservation, per-call timeout, persisted LLM deadline, evidence count, tool rounds, graph depth and starts/hour are bounded. Whole-run timeout defaults to 600 seconds and reports `workflow_timeout`; graph depth reports `workflow_limit`. Failed investigations can resume checkpoints through the retry API.
+- Known-usage calls record provider usage. Unknown-usage failures consume their conservative full reservation. Output allowances are capped before sending a request; retries cannot evade budget accounting.
+- Explicitly disable Anthropic OpenTelemetry and reject enabled LangSmith/LangChain tracing settings. No write-capable external tools or recovery-action tables/routes are introduced.
+
+### Performance measured in this session
+
+`UV_CACHE_DIR=/private/tmp/root-uv-cache uv run --no-sync pytest tests/perf -m perf -s` against isolated local PostgreSQL 18.6: **5 passed in 112.50 seconds**. Performance was measured while other test suites ran; no CI/production or 20-user p95 claim is made.
+
+| Operation | Measurement |
+|---|---|
+| Investigation on uploaded generated data, deterministic | 2.367 seconds; 4 incidents, 24 evidence links, 32 events |
+| Same revision, cached evidence + scripted model | 1.692 seconds; 10 model calls; identical analytical signature |
+| Analytics, approximately 20k / 100k lines | 0.942 / 3.125 seconds, 25 SQL statements each |
+| Ingestion, 20,271 / 101,107 lines | 3.151 / 15.245 seconds total |
+
+### Tests executed and actual results
+
+Test environment: isolated disposable PostgreSQL databases on a temporary local cluster, runtime `root_app`, migrations as owner; Python 3.14.8 and Node 24.22.0. Commands below ran from `services/api` or `apps/web`, with the test DB variables supplied by the session and `UV_CACHE_DIR=/private/tmp/root-uv-cache` for uv.
+
+Final backend suite: `uv run --no-sync pytest --cov --cov-fail-under=85 --durations=10` → **538 passed, 1 opt-in live test skipped, 5 perf deselected in 538.79 seconds**, 94.45% coverage. The extreme-ratio regression and actual subprocess-restart test were added after that run collected its tests; `uv run --no-sync pytest tests/unit/test_investigation_units.py tests/investigation/test_process_restart.py --cov --cov-append --cov-fail-under=85 -q` → **95 passed in 14.34 seconds**, final combined coverage **95.89%**. Together these execute all **540 current non-live backend tests** successfully. No pending failures remain.
+
+Required coverage commands were executed: `uv run --no-sync coverage report --include='app/auth/*,app/tenancy/*' --fail-under=95` (98%); the same command for `app/analytics/*` (96%), `app/investigation/verification.py` (100%) and `app/investigation/critic.py` (98%). No threshold was lowered. `uv sync --locked` resolved 102 packages and checked the 98 installed packages successfully. OpenAPI and generated TypeScript were regenerated twice and compared byte-for-byte with `cmp`, with no drift.
+
+Final Ruff/format/mypy rerun after all source additions: **all checks passed**, **119 files formatted**, **116 sources strictly typed**. `gitleaks git --staged --redact --no-banner .` scanned the staged Phase 5 content and reported **no leaks**.
+
+| Check | Actual result |
+|---|---|
+| `uv run --no-sync ruff check .`; `ruff format --check .`; `mypy` | All passed; 118 Python files formatted and 115 sources checked at the final pre-regression checkpoint |
+| Initial `uv run --no-sync pytest --cov --cov-fail-under=85` | 476 passed, 1 failed, 4 perf deselected, 347.26 seconds. Failure: LangGraph wrapped worker cancellation; fixed and dedicated resilience rerun passed |
+| Investigation integration suite | 12 passed, 92.13 seconds |
+| Final dedicated resilience suite before the integrity addition | 10 passed, 74.14 seconds |
+| Start idempotency/concurrency regressions | 2 passed, 10.13 seconds |
+| Final TTL and corrupt-evidence regressions | 2 passed, 15.31 seconds |
+| Twenty imported injection directives via real upload | 1 integration test passed, 15.42 seconds |
+| LLM/Critic targeted units | 129 passed, 1.13 seconds before final extreme-ratio regression |
+| Final extreme-ratio investigation units | 94 passed, 0.57 seconds |
+| Actual worker SIGKILL and fresh subprocess recovery | 1 passed, 15.03 seconds; then included in the 95-test supplemental coverage run above. Checkpoints resume, facts match and events/evidence links are not duplicated |
+| 20-seed control calibration (`--junitxml=... -o junit_family=xunit1`) | Passed in 109.55 seconds. 3 incidents/20 controls = 0.15 average, below the unchanged ≤1 target. Seeds 909 and 1818 produced 1 and 2 respectively; other 18 produced zero |
+| `npm run lint`; `npm run typecheck`; `npm run test:coverage` | Passed. 30 frontend tests; statements 97.71%, branches 86.95% |
+| `BACKEND_URL=... npm run build -- --webpack` | Passed. Default Turbopack build failed because this host blocks its worker socket even with sandbox escalation; webpack is a supported compiler, no source or threshold change |
+| `CI=1 npx playwright test` | 7 passed, 26.2 seconds, production web build + API + worker + isolated PostgreSQL |
+| `uv run --no-sync pip-audit` | No known vulnerabilities |
+| `npm audit --omit=dev --audit-level=high`; `npm run audit:gate` | Zero production findings; gate passed with the existing AMD-7 exception only |
+| Checksum-verified gitleaks 8.30.1 full-history scan | 5 commits scanned, no leaks; staged scan recorded with commit below |
+| Separate live-model integration | **Not run:** no `ANTHROPIC_API_KEY` and no explicit `ROOT_LIVE_LLM_TESTS=1`. The collected test is opt-in under AMD-13 |
+
+### Errors encountered and fixes applied
+
+- Claude's initial tree had one lint failure and eleven strict-type errors; fixed without lowering gates.
+- Gateway timeout previously ignored remaining investigation time; token budgets could overshoot on a final call and failures charged zero. Fixed with bounded calls/sleeps, conservative reservation and failure accounting.
+- Committed node selections/circuit state could be lost before checkpoint; persisted state is now reused. LangGraph's `NodeCancelledError` is converted back to cancellation so lease recovery works rather than marking a crashed worker's run permanently failed.
+- Concurrent starts could race quota/deduplication. Added serialization and durable start-key replay, including replay after completion and expiry.
+- Invalid evidence hashes were excluded from verification but could still reach prompts/output. All default evidence reads now exclude them; verification explicitly loads invalid rows only to record the integrity event.
+- Incident data-quality zero-day checks were not slice-scoped; zero-price customers were omitted from exposure; extreme valid ratios used the default Decimal precision. Fixed with regression tests.
+- The new 20-control test initially asserted zero incidents on every control, stricter than the published average ≤1 gate. That newly written test design was corrected to the actual contract: original five zero-control assertions remain unchanged, and a separate 20-control average calibration was added. No detector constants, acceptance threshold or existing test assertion was weakened. The superseded design run recorded 61 passed/2 failed; the corrected calibration passed.
+- Sandbox initially blocked PostgreSQL shared memory/localhost. An isolated temporary cluster and approved local test runs resolved this. JUnit calibration initially needed `junit_family=xunit1` under warning-as-error; the corrected command passed. Frontend typecheck/build first lacked `BACKEND_URL`; rerunning with the required configuration resolved typecheck.
+
+### Known limitations and remaining risks
+
+- Live provider behavior and latency are unverified in this session. The official [provider migration guide](https://platform.claude.com/docs/en/models/opus-5-5/migration-guide) and [structured-output reference](https://platform.claude.com/docs/en/build-with-claude/structured-outputs) were checked; pinned releases were rechecked on PyPI: [anthropic 1.15.0](https://pypi.org/project/anthropic/1.15.0/), [langgraph 1.2.15](https://pypi.org/project/langgraph/1.2.15/), [checkpoint-postgres 3.2.0](https://pypi.org/project/langgraph-checkpoint-postgres/3.2.0/). This establishes documented compatibility, not a live pass.
+- Arbitrary prose is not a semantic proof of a claim. AI interpretation is explicitly labelled; facts, observations, verdicts and candidate ranking are deterministic and evidence-linked.
+- Three control incidents across 20 seeds demonstrate that deterministic detection is not a zero-false-positive guarantee. Broader real-data calibration and unimplemented baseline scenarios remain outstanding.
+- CI run results, production measurements, 500k-line/20-user load tests, charts/axe, account lifecycle and retention remain unverified or deferred; no claim of full-product readiness is made.
+
+### Acceptance criteria status
+
+Phase 5 implementation and all local completion gates are **met**, under AMD-12/13/14. Git verification follows in the post-commit record; remote CI and the optional real-provider run are not claimed as passed.
+
+| Criterion | Status and evidence |
+|---|---|
+| Uploaded data produces evidence-backed output | Met: planted return/discount incidents, source observations, independently resolved citations and supported hypotheses |
+| Strict read-only tool selection and tenant isolation | Met: typed schemas, argument rejection, automatic role/route matrix, cross-tenant/RLS tests |
+| Competing hypotheses, deterministic statuses and unresolved explanations | Met: catalog applicability/status/confidence tests; missing evidence remains inconclusive; context requests persisted |
+| Unsupported citations and impossible numerical claims rejected | Met: Critic tests, malformed model output, overclaimed causes, impossible tool results and corrupt stored evidence |
+| Injection resistance | Met: 20 persisted CSV directives, business/foreign-business sentinels, no raw source text or side-effect tools in actual model inputs |
+| Provider/tool failure, retries and limits | Met: timeout/rate-limit/unavailability/tool failures, repair/fallback, token/call/deadline/depth/tool-loop limits |
+| PostgreSQL durability and restart | Met: checkpoint schema/state tests, commit-before-checkpoint replay, concurrent workers, actual SIGKILL and fresh-process resume |
+| Facts independent of model wording | Met: deterministic and three scripted styles have identical analytical signatures |
+| Quality gates and full regression | Met locally: 540 distinct backend tests passed, opt-in live test skipped, 5 perf tests passed; required coverage/lint/types/audits, 30 frontend tests and 7 browser tests passed |
+| No Phase 6 or unauthorized external effects | Met: no human-answer/recovery/executor implementation, no write-capable external model tools |
+
+### Commit hash and GitHub push status
+
+- Implementation commit hash and verified push result are appended in the post-commit verification record below, avoiding a self-referential commit hash.
+- Before Phase 5 commit, `git ls-remote origin refs/heads/main` returned `6b14c2ac1f7d765ea82d88d056e9e4e8e9528c88`, matching the Phase 4 local base. This verifies its remote presence now, not historical CI success.
+
+### Next-phase dependencies
+
+- Do not begin Phase 6 in this session.
+- A later user-authorized Phase 6 implements the human-in-the-loop scope (baseline Phase 8) against persisted context requests, evaluations and graph checkpoints. It must preserve earlier evidence and establish answer/resume durability; no answer endpoints are stubbed here.

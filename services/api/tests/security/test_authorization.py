@@ -114,6 +114,8 @@ def _url(path: str, business_id: uuid.UUID, dataset_id: uuid.UUID) -> str:
         .replace("{dataset_id}", str(dataset_id))
         .replace("{kind}", "orders")
         .replace("{incident_id}", str(uuid.UUID(int=1)))
+        .replace("{investigation_id}", str(uuid.UUID(int=1)))
+        .replace("{evidence_id}", str(uuid.UUID(int=1)))
     )
 
 
@@ -130,7 +132,8 @@ async def _call(client: httpx.AsyncClient, method: str, url: str) -> httpx.Respo
     """Minimal request: unsafe methods carry CSRF protection and an (invalid) empty body."""
     if method == "GET":
         return await client.get(url)
-    return await client.request(method, url, headers=await csrf_headers(client), json={})
+    headers = {**await csrf_headers(client), "Idempotency-Key": uuid.uuid4().hex}
+    return await client.request(method, url, headers=headers, json={})
 
 
 @pytest.mark.parametrize("role", ROLES)
@@ -148,8 +151,9 @@ async def test_role_permission_matrix(
             assert response.status_code not in {401, 403}, label
             assert response.status_code < 500, label
             if method == "GET":
-                # 404: a random incident id, or no analysis ever requested for the dataset.
-                not_found_ok = "{incident_id}" in path or path.endswith("/analysis")
+                # 404: a random resource id, or no analysis ever requested for the dataset.
+                random_ids = ("{incident_id}", "{investigation_id}", "{evidence_id}")
+                not_found_ok = any(p in path for p in random_ids) or path.endswith("/analysis")
                 allowed = {200, 404, 409} if not_found_ok else {200, 409}
                 assert response.status_code in allowed, label
         else:

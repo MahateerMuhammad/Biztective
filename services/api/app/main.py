@@ -27,16 +27,14 @@ from app.core.middleware import (
 from app.datasets.router import router as datasets_router
 from app.ingestion.contract import MAX_UPLOAD_BYTES
 from app.ingestion.pipeline import ingest_dataset, mark_dataset_failed
+from app.investigation.router import router as investigation_router
+from app.investigation.service import InvestigationRuntime, provider_from_settings
 from app.jobs.queue import JobType, LeasedJob
 from app.jobs.worker import Handler, run_worker
 from app.tenancy.router import router as tenancy_router
 
 MAX_JSON_BODY_BYTES = 1024 * 1024  # SEC-07
 UPLOAD_ROUTE = re.compile(r"/api/v1/businesses/[^/]+/datasets")
-JOB_HANDLERS: dict[JobType, Handler] = {
-    "ingest_dataset": ingest_dataset,
-    "analyze_dataset": analyze_dataset,
-}
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -44,12 +42,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     configure_logging(settings.log_level)
     engine = create_engine(settings)
     sessionmaker = create_sessionmaker(engine)
+    investigations = InvestigationRuntime(settings, provider_from_settings(settings))
+    job_handlers: dict[JobType, Handler] = {
+        "ingest_dataset": ingest_dataset,
+        "analyze_dataset": analyze_dataset,
+        "run_investigation": investigations.run,
+    }
 
     async def on_final_failure(job: LeasedJob, code: str) -> None:
         if job.type == "ingest_dataset":
             await mark_dataset_failed(sessionmaker, job, code)
-        else:
+        elif job.type == "analyze_dataset":
             await mark_analysis_failed(sessionmaker, job, code)
+        else:
+            await investigations.mark_failed(sessionmaker, job, code)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -58,7 +64,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             worker = asyncio.create_task(
                 run_worker(
                     sessionmaker,
-                    JOB_HANDLERS,
+                    job_handlers,
                     on_final_failure,
                     poll_seconds=settings.worker_poll_seconds,
                 )
@@ -82,6 +88,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.sessionmaker = sessionmaker
     app.state.on_job_failure = on_final_failure
+    app.state.job_handlers = job_handlers
+    app.state.investigations = investigations
     app.state.migration_head = health.expected_migration_head()
 
     api = APIRouter(prefix="/api/v1")
@@ -90,6 +98,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.include_router(tenancy_router)
     api.include_router(datasets_router)
     api.include_router(analytics_router)
+    api.include_router(investigation_router)
     api.include_router(audit_router)
     app.include_router(api)
     register_error_handlers(app)

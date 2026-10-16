@@ -1,5 +1,6 @@
 import httpx
 from alembic import command
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from sqlalchemy import create_engine, text
 
 from app.main import create_app
@@ -18,14 +19,22 @@ EXPECTED_TABLES = {
     "audit_log",
     "auth_attempts",
     "businesses",
+    "clarifications",
     "customer_segments",
     "customers",
     "dataset_files",
     "datasets",
     "evidence_items",
+    "findings",
+    "hypotheses",
+    "hypothesis_evaluations",
     "idempotency_keys",
     "incidents",
+    "investigation_events",
+    "investigation_evidence",
+    "investigations",
     "jobs",
+    "llm_calls",
     "memberships",
     "order_lines",
     "products",
@@ -33,6 +42,12 @@ EXPECTED_TABLES = {
     "sessions",
     "users",
     "validation_issues",
+}
+CHECKPOINT_TABLES = {
+    "checkpoint_migrations",
+    "checkpoints",
+    "checkpoint_blobs",
+    "checkpoint_writes",
 }
 RLS_TABLES = EXPECTED_TABLES - {
     "alembic_version",
@@ -94,6 +109,15 @@ def test_migrations_upgrade_downgrade_upgrade(admin_url: str, app_password: str)
             )
         assert set(tables) == EXPECTED_TABLES
         assert {t for t, rls in tables.items() if rls} == RLS_TABLES
+        with engine.connect() as conn:
+            checkpoint_tables = set(
+                conn.scalars(text("SELECT tablename FROM pg_tables WHERE schemaname='langgraph'"))
+            )
+            checkpoint_migrations = list(
+                conn.scalars(text("SELECT v FROM langgraph.checkpoint_migrations ORDER BY v"))
+            )
+        assert checkpoint_tables == CHECKPOINT_TABLES
+        assert checkpoint_migrations == list(range(len(AsyncPostgresSaver.MIGRATIONS)))
 
         command.downgrade(config, "base")
         with engine.connect() as conn:
@@ -103,15 +127,19 @@ def test_migrations_upgrade_downgrade_upgrade(admin_url: str, app_password: str)
             functions = conn.scalar(
                 text("SELECT count(*) FROM pg_proc WHERE proname = 'audit_log_append_only'")
             )
+            schemas = conn.scalar(
+                text("SELECT count(*) FROM pg_namespace WHERE nspname = 'langgraph'")
+            )
         assert remaining == {"alembic_version"}
         assert functions == 0
+        assert schemas == 0
 
         command.upgrade(config, "head")
-        for target in ("0002", "0001"):  # each revision downgrades on its own
+        for target in ("0003", "0002", "0001"):  # each revision downgrades on its own
             command.downgrade(config, target)
             command.upgrade(config, "head")
         with engine.connect() as conn:
-            assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "0003"
+            assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "0004"
             assert conn.scalar(text("SELECT count(*) FROM analysis_configs")) == 1
     finally:
         engine.dispose()

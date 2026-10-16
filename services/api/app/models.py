@@ -336,4 +336,141 @@ class EvidenceItem(Base):
     params: Mapped[dict[str, Any]] = mapped_column(JSONB)
     result: Mapped[dict[str, Any]] = mapped_column(JSONB)
     result_hash: Mapped[str] = mapped_column(Text)
+    params_hash: Mapped[str | None] = mapped_column(Text)
+    query_version: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ---- Investigations (AMD-12) ----
+
+
+class Investigation(Base):
+    __tablename__ = "investigations"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid7)
+    business_id: Mapped[uuid.UUID] = mapped_column()
+    dataset_id: Mapped[uuid.UUID] = mapped_column()
+    revision_id: Mapped[uuid.UUID] = mapped_column()
+    status: Mapped[str] = mapped_column(Text)
+    phase: Mapped[str | None] = mapped_column(Text)
+    llm_mode: Mapped[str] = mapped_column(Text)
+    llm_disabled_reason: Mapped[str | None] = mapped_column(Text)
+    graph_version: Mapped[str] = mapped_column(Text)
+    catalog_version: Mapped[str] = mapped_column(Text)
+    last_seq: Mapped[int] = mapped_column(Integer, default=0)
+    error_code: Mapped[str | None] = mapped_column(Text)
+    started_by: Mapped[uuid.UUID | None] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class InvestigationEvent(Base):
+    __tablename__ = "investigation_events"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    business_id: Mapped[uuid.UUID] = mapped_column()
+    investigation_id: Mapped[uuid.UUID] = mapped_column()
+    seq: Mapped[int] = mapped_column(Integer)
+    type: Mapped[str] = mapped_column(Text)
+    actor_kind: Mapped[str] = mapped_column(Text)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    dedupe_key: Mapped[str] = mapped_column(Text)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class LlmCall(Base):
+    __tablename__ = "llm_calls"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid7)
+    business_id: Mapped[uuid.UUID] = mapped_column()
+    investigation_id: Mapped[uuid.UUID] = mapped_column()
+    task: Mapped[str] = mapped_column(Text)
+    attempt: Mapped[int] = mapped_column(SmallInteger)
+    provider: Mapped[str] = mapped_column(Text)
+    model: Mapped[str] = mapped_column(Text)
+    prompt_version: Mapped[str] = mapped_column(Text)
+    input_hash: Mapped[str] = mapped_column(Text)
+    input: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    output: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    stop_reason: Mapped[str | None] = mapped_column(Text)
+    tokens_in: Mapped[int] = mapped_column(Integer, default=0)
+    tokens_out: Mapped[int] = mapped_column(Integer, default=0)
+    latency_ms: Mapped[int] = mapped_column(Integer)
+    validation: Mapped[str] = mapped_column(Text)
+    error_code: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Hypothesis(Base):
+    __tablename__ = "hypotheses"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid7)
+    business_id: Mapped[uuid.UUID] = mapped_column()
+    investigation_id: Mapped[uuid.UUID] = mapped_column()
+    incident_id: Mapped[uuid.UUID] = mapped_column()
+    template: Mapped[str] = mapped_column(Text)
+    catalog_version: Mapped[str] = mapped_column(Text)
+    priority: Mapped[int] = mapped_column(SmallInteger)
+    source: Mapped[str] = mapped_column(Text)
+    rationale: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class HypothesisEvaluation(Base):
+    __tablename__ = "hypothesis_evaluations"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid7)
+    business_id: Mapped[uuid.UUID] = mapped_column()
+    hypothesis_id: Mapped[uuid.UUID] = mapped_column()
+    status: Mapped[str] = mapped_column(Text)
+    confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4))
+    data_confidence: Mapped[Decimal | None] = mapped_column(Numeric(5, 4))
+    human_confidence: Mapped[Decimal | None] = mapped_column(Numeric(5, 4))
+    criteria: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    evaluated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class InvestigationEvidence(Base):
+    __tablename__ = "investigation_evidence"
+
+    business_id: Mapped[uuid.UUID] = mapped_column()
+    investigation_id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    evidence_id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    incident_id: Mapped[uuid.UUID] = mapped_column()
+    requested_by: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Clarification(Base):
+    __tablename__ = "clarifications"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid7)
+    business_id: Mapped[uuid.UUID] = mapped_column()
+    investigation_id: Mapped[uuid.UUID] = mapped_column()
+    incident_id: Mapped[uuid.UUID] = mapped_column()
+    incident_key: Mapped[str] = mapped_column(Text)
+    hypothesis_id: Mapped[uuid.UUID | None] = mapped_column()
+    criterion_key: Mapped[str] = mapped_column(Text)
+    trigger: Mapped[str] = mapped_column(Text)
+    question_spec: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(Text, default="open")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Finding(Base):
+    __tablename__ = "findings"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid7)
+    business_id: Mapped[uuid.UUID] = mapped_column()
+    investigation_id: Mapped[uuid.UUID] = mapped_column()
+    round: Mapped[int] = mapped_column(SmallInteger)
+    content: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    rendered: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    source: Mapped[str] = mapped_column(Text)
+    llm_call_id: Mapped[uuid.UUID | None] = mapped_column()
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

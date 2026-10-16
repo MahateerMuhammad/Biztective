@@ -1,7 +1,9 @@
 """Detection on generated data: no fabricated incidents on clean data, planted spikes found."""
 
 import uuid
-from datetime import date
+from collections.abc import Callable
+from dataclasses import replace
+from datetime import date, timedelta
 from typing import Any
 
 import httpx
@@ -63,11 +65,40 @@ async def test_clean_data_produces_no_incidents(
     assert detection["flags_before_consolidation"] == 0
 
 
-@pytest.mark.parametrize("seed", [7, 8, 9, 10, 11])
+async def test_twenty_control_seeds_meet_published_false_positive_budget(
+    app: FastAPI,
+    client: httpx.AsyncClient,
+    owner_engine: Engine,
+    record_property: Callable[[str, object], None],
+) -> None:
+    # AC-6.1 permits <=1 false positive per control on average. The original five-seed
+    # zero-incident regression above remains unchanged; calibration uses the published gate.
+    counts: dict[str, int] = {}
+    keys: dict[str, list[str]] = {}
+    for seed in (101 * i for i in range(1, 21)):
+        tenant = create_tenant(owner_engine, f"control{seed}")
+        assert (await login(client, tenant.email)).status_code == 200
+        opts = replace(options(seed), start=date(2026, 1, 5) + timedelta(weeks=seed % 12))
+        analysis, _, _ = await analyse(app, client, tenant, opts)
+        assert analysis["status"] == "completed"
+        assert analysis["summary"]["detection"]["slices_tested"] > 50
+        counts[str(seed)] = len(analysis["incidents"])
+        keys[str(seed)] = [i["key"] for i in analysis["incidents"]]
+    record_property("control_false_positive_counts", counts)
+    record_property("control_false_positive_keys", keys)
+    assert sum(counts.values()) <= len(counts), (counts, keys)
+
+
+@pytest.mark.parametrize("seed", range(7, 27))
 async def test_planted_return_spike_is_detected_with_evidence(
     app: FastAPI, client: httpx.AsyncClient, owner: Tenant, owner_engine: Engine, seed: int
 ) -> None:
-    analysis, manifest, base = await analyse(app, client, owner, options(seed, "return_spike"))
+    analysis, manifest, base = await analyse(
+        app,
+        client,
+        owner,
+        replace(options(seed, "return_spike"), start=date(2026, 1, 5) + timedelta(weeks=seed % 12)),
+    )
     assert analysis["status"] == "completed"
     planted = {("product", manifest["planted_product"]), ("category", manifest["planted_category"])}
     refund = [i for i in analysis["incidents"] if i["metric"] == "refund_rate"]
@@ -109,6 +140,39 @@ async def test_planted_return_spike_is_detected_with_evidence(
             ).one()
             assert row.return_id == ref["key"]
             assert f"{row.refund_amount}" == ref["amount"]
+
+
+@pytest.mark.parametrize("seed", range(7, 27))
+async def test_planted_discount_spike_is_detected_with_evidence(
+    app: FastAPI, client: httpx.AsyncClient, owner: Tenant, seed: int
+) -> None:
+    analysis, manifest, base = await analyse(
+        app,
+        client,
+        owner,
+        replace(
+            options(seed, "discount_spike"), start=date(2026, 1, 5) + timedelta(weeks=seed % 12)
+        ),
+    )
+    assert analysis["status"] == "completed"
+    planted = {("product", manifest["planted_product"]), ("category", manifest["planted_category"])}
+    matches = [
+        i
+        for i in analysis["incidents"]
+        if i["metric"] == "discount_rate" and (i["dimension"], i["value"]) in planted
+    ]
+    assert matches, analysis["incidents"]
+    incident = matches[0]
+    assert incident["affected"]["order_lines"] > 0
+    detail = (await client.get(f"{base}/incidents/{incident['id']}")).json()
+    evidence = {item["kind"]: item for item in detail["evidence"]}
+    assert {"incident_detection", "source_records"} <= evidence.keys()
+    for item in detail["evidence"]:
+        assert sha256_of(item["result"]) == item["result_hash"]
+    stats = evidence["incident_detection"]["result"]
+    assert stats["z"] is None or stats["z"] >= 3
+    assert float(stats["delta_abs"]) > 0.02
+    assert 0 < len(evidence["source_records"]["result"]["sample"]) <= 25
 
 
 async def test_analysis_is_reproducible(

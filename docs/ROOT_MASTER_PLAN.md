@@ -720,3 +720,82 @@ Format:
 
      Reason: this was found by measurement. Without fresh statistics, the third and later datasets in a database were planned with nested loops, and analysis took 24–27 s instead of 0.9 s. The runtime role cannot `ANALYZE` tables it does not own, and `MAINTAIN` would require PostgreSQL 17 or later.
 - Supersedes: ARCHITECTURE §5.4 step 3 for `aov` only.
+
+### AMD-12 — 2026-10-17 — Phase 5
+- Affects: §8 (Phase 5 scope), ARCHITECTURE §4.4, §6.2–§6.4, §8, §12, §13.1, DATA_CONTRACTS §6.3, §7.6, §8, §9, SECURITY_MODEL §5.1, TH-08.
+- **Scope.** User Phase 5 is the rest of baseline Phase 6 (hypothesis catalog, evidence tool registry, deterministic verification) plus baseline Phase 7 (LLM gateway, LangGraph graph, PostgreSQL checkpointer, investigations, events, `llm_calls`, endpoints, budgets, deterministic mode), **without human interrupts**. Clarification answering, corrections, findings review and the `interrupt()` nodes stay in the human-in-the-loop phase. The "missing-context detection" node records open context requests (rule-generated questions) in the output; it does not pause the graph.
+- **Provider.** Anthropic, through the official Python SDK `anthropic` 1.15.0, model `claude-opus-5-5` (configurable). Verified in the current official SDK documentation: JSON-schema structured output (`output_config.format`) and tool use with `strict` schemas. The API keeps no conversation state between requests. Settings: `LLM_PROVIDER` = `disabled` (default; deterministic mode) or `anthropic`, which requires `ANTHROPIC_API_KEY`. CI never calls a real provider: tests inject a scripted fake provider. One opt-in live test runs only when `ROOT_LIVE_LLM_TESTS=1` and a key are present.
+- **Tool selection through structured output.** The LLM requests evidence tools by returning a JSON object whose schema is generated from the tool parameter models: an `anyOf` over the allowlisted tools, each with a `const` name and its own argument object. This replaces provider-native tool calling for `request_evidence` (DATA_CONTRACTS §9.2). Reason: Opus 5.5 rejects forced `tool_choice`, so a guaranteed, schema-valid response is available only through structured output. One validation path covers the real provider and the CI fake alike. The LLM never executes anything. The runtime validates each request with the tool's strict Pydantic model (extra fields forbidden, enums for every identifier), then runs an allowlisted read-only function. The provider schema omits keywords the API does not support (`minLength`, `maximum`, …), and Pydantic enforces them after the response.
+- **Graph (Phase 5).** `initialize → select_incident → generate_hypotheses → select_tools → retrieve_evidence (⟲ select_tools, at most 2 rounds) → verify_evidence → detect_missing_context → select_incident … → synthesize_output → finalize`. `initialize` routes straight to `finalize` for `insufficient_data` or when there are no incidents (`completed_no_incidents`).
+  - The investigation binds to the dataset's finished Phase 4 analysis revision.
+  - POST returns 409 `analysis_not_ready` until that revision exists.
+  - State holds IDs, counters and validated tool requests (enums only).
+  - `thread_id` = investigation ID. `durability="sync"`, so a checkpoint is written after every node.
+  - A failed job resumes from the last checkpoint.
+  - `recursion_limit` is a hard stop: hitting it fails the investigation with `workflow_limit`.
+- **Hypothesis catalog v1 (`catalog_version` 1.0.0).**
+  - Templates implemented: `H_RETURNS_QUALITY`, `H_FULFILLMENT`, `H_PRICE_DISCOUNT`, `H_SEGMENT_SHIFT`, `H_CONCENTRATION`, `H_CHANNEL`, `H_DATA_QUALITY`, `H_EXTERNAL_CONTEXT`.
+  - `H_CUSTOMER_CHURN` is renamed `H_SEGMENT_SHIFT` ("fewer purchases from previously established customers"), so that no output asserts churn (AMD-10).
+  - `H_MIX_SHIFT` is deferred until a mix-rate decomposition tool exists. It is not stubbed.
+  - Criteria, weights and thresholds are in `app/investigation/catalog.py` and DATA_CONTRACTS §12. Every template except `H_CHANNEL` carries one human criterion; in Phase 5 it is always unanswered.
+  - **Verification change.** A data criterion whose evidence is missing evaluates to *unknown*. A hypothesis with an unknown data criterion cannot be refuted by low confidence; it is `inconclusive`, and the gap is reported. ARCHITECTURE §6.4 would otherwise refute a hypothesis for lack of data.
+- **Evidence tools (all read-only, scoped by the runtime to the investigation's business, dataset, revision and incident slice).**
+  - `metric_breakdown` (business metric retrieval and contribution).
+  - `period_comparison` (equal-period, AMD-10).
+  - `return_investigation` (reason mix, excess-refund contributors, matured cohort refund rates).
+  - `segment_analysis` (lifecycle segments as of the baseline end).
+  - `customer_exposure` (customers in scope, top-k share, repeat buyers).
+  - `evidence_lookup` (stored evidence of the same investigation and incident).
+  - `data_quality_check` (zero-order days, weekly volume anomalies, near-duplicates, cancellations, missing costs, immature returns).
+
+  These replace the baseline §6.3 tool list. Arguments are enums and small integers only. The LLM never supplies a business, dataset, revision, entity value or SQL fragment.
+
+  Results are stored as `evidence_items` (new `kind` values, `params_hash`, `query_version`, `requested_by`). They are unique per (revision, kind, params_hash), so an immutable revision's tool result is computed once and reused across investigations (the calculation cache). `investigation_evidence` links items to investigations.
+- **Facts never depend on the LLM.**
+  - Verdicts use only the catalog-required tool calls, with fixed parameters. The system always runs those calls, whatever the LLM selects. LLM-requested extra evidence can be cited in the narrative but cannot change a status or confidence.
+  - The root-cause candidate is chosen by confidence and catalog order. LLM priority orders the presentation only.
+  - Observations (source facts) are rendered from evidence by code templates. They are stored separately from hypotheses and from the LLM narrative.
+- **Evidence Critic (deterministic, `app/investigation/critic.py`).**
+  1. **Tool output sanity.** Shares in [0, 1], counts are non-negative integers, decompositions sum to their totals within 0.0001, rates are finite. An impossible result is rejected and never stored.
+  2. **Integrity.** Each evidence hash is recomputed before verification. A mismatch excludes the item.
+  3. **LLM output checks**, in addition to the §8.3 pipeline:
+     - Every citation and placeholder must reference evidence linked to *this* investigation and incident, and a field that exists and is numeric.
+     - Root causes must be `supported` hypotheses.
+     - A sentence must not state a direction ("rose", "fell", …) that contradicts the sign of the signed field it cites.
+
+  Rejection triggers one repair attempt, then the deterministic fallback.
+- **LLM inputs.** Aggregates, enum codes, evidence IDs and opaque entity references (`{{entity:<kind>:<hash>}}`) only. Dimension values, product names and IDs, customer IDs and `reason_text` are business text and are never sent, so an injection planted in a CSV field cannot reach the model. `untrusted_text` is therefore always empty in Phase 5.
+- **Limits (configurable, persisted, enforced in code).**
+  - **LLM budget:** ≤ 40 calls and ≤ 200 000 tokens per investigation. A per-call timeout of 60 s.
+  - **Retries:** 2 retries for timeouts, 429 and 5xx, with backoff that honours `retry-after`, capped at 10 s.
+  - **Deadline:** LLM use stops after 300 s of wall-clock time per investigation.
+  - **Circuit breaker:** the first provider failure that survives retries switches the investigation to deterministic mode.
+  - **Tools:** ≤ 6 LLM-requested tool calls per incident and ≤ 40 evidence items per incident. Duplicate requests are collapsed.
+  - **Workflow:** at most 2 selection rounds per incident, and `recursion_limit` 120.
+  - **Starts:** 20 investigation starts per business per hour (SEC-20).
+- **Schema (migration `0004`).**
+  - New tables `investigations`, `investigation_events`, `hypotheses`, `hypothesis_evaluations`, `investigation_evidence`, `clarifications` (status `open` only in Phase 5), `findings` (one round, no review status yet) and `llm_calls`, all with RLS.
+  - `evidence_items` extended as above.
+  - New job type `run_investigation`.
+  - LangGraph checkpoint tables in schema `langgraph`. The DDL is the library's own migration list, frozen into the Alembic migration and recorded in `checkpoint_migrations` so the library never runs DDL at runtime. A test fails if the installed library expects more migrations. The app role gets `USAGE`, `SELECT`, `INSERT` and `UPDATE` there, but not `DELETE`.
+- **Permissions.** `investigation:read` (owner, analyst, viewer) and `investigation:run` (owner, analyst), per SECURITY_MODEL §5.1. `investigation:cancel` is deferred with the cancel endpoint.
+- **Dependencies.** `anthropic` 1.15.0, `langgraph` 1.2.15 and `langgraph-checkpoint-postgres` 3.2.0, verified on PyPI on 2026-10-17. `langgraph` pulls in `langsmith`. Tracing stays off: startup refuses `LANGSMITH_TRACING`/`LANGCHAIN_TRACING_V2` set to true, so no investigation data can leave through tracing.
+- Reason: The user's Phase 5 instruction (typed read-only tools, an Evidence Critic, injection resistance, bounded execution, persistent checkpoints, mocked-LLM CI), Opus 5.5 API constraints, and gaps in the baseline catalog.
+- Supersedes: ARCHITECTURE §6.3 tool list, the §6.2 rows `H_CUSTOMER_CHURN` (renamed) and `H_MIX_SHIFT` (deferred), the §6.4 low-confidence refutation when evidence is missing, the §12.2 graph for Phase 5 (no interrupts), and DATA_CONTRACTS §9.2 `request_evidence` (provider tool calling).
+
+### AMD-13 — 2026-10-17 — Phase 5 completion audit
+- Affects: AMD-12; baseline AC-6.4, AC-7.1–7.6; ARCHITECTURE §8, §12; DATA_CONTRACTS §12; TEST_STRATEGY §4–5.
+- **Scope and acceptance.** The user's renewed Phase 5 instruction explicitly authorizes finishing the interrupted Phase 5 work. It is backend-only: the investigation API returns structured observations, hypotheses, verdicts, gaps and rendered findings. Human answers, interrupts, recovery actions, replay UI and live timeline UI remain outside this phase. Baseline AC-7.1 is replaced for this phase by completion from real uploaded data in deterministic and scripted-provider modes, plus a separate opt-in real-provider integration test. A live call is not a default CI/completion requirement; its actual execution or absence must be logged. AC-7.2–7.6 remain applicable. AC-6.4 requires every *reachable* status for each template (a data-only template cannot require human context); the human-answer transitions remain in the human-in-the-loop phase. Detection recall/false-positive thresholds and all coverage thresholds remain unchanged.
+- **Execution limits.** Before implementation, add a whole-run `investigation_timeout_seconds` limit (default 600 seconds, configurable) around checkpoint loading and graph execution, independent of the 300-second LLM deadline. Expiry records a recoverable `failed` investigation with `workflow_timeout`. A PostgreSQL session advisory lock keyed by investigation ID on the dedicated checkpoint connection serializes overlapping workers, including lease recovery; process/connection termination releases the lock. Bound the lock wait by the same run timeout.
+- **Budget accounting.** Reserve input tokens conservatively from UTF-8 request/schema bytes plus framing overhead, and cap each requested output to the remaining token allowance. Failed attempts without provider usage consume their full reservation; successful attempts record provider-reported usage. Do not retry through an exhausted budget. Report this conservative accounting in the tool/LLM contract.
+- **Audit process.** Correct earlier completion overstatements by appending an explicit reconciliation in the Phase 5 log, never editing earlier test evidence. Prior CI, production performance and unimplemented generator scenarios remain unverified unless executed in this session. The renewed instruction authorizes Phase 5 completion work, not a claim that unobserved historical gates passed.
+- Reason: User asks to audit Claude's incomplete work, finish Phase 5, use parallel coding agents, run rigorous failure tests, and keep Phase 6 out of scope. The completion audit found missing total runtime/concurrency bounds and an interrupt-based acceptance criterion incompatible with AMD-12.
+- Supersedes: baseline AC-7.1 and the Phase 5 applicability of baseline live timeline/interrupt scope only; clarifies AC-6.4. Adds execution bounds without lowering existing quality, security or detection thresholds.
+
+### AMD-14 — 2026-10-17 — Phase 5 contract reconciliation
+- Affects: DATA_CONTRACTS §7.1, §12.4, §12.6; AMD-8 phase-number mapping after Phase 5.
+- **Start idempotency.** Investigation starts reuse the existing critical-POST key storage, including its 24-hour TTL and 409 on body/operation mismatch. The header format is the established upload format: 8–100 characters matching `[A-Za-z0-9_-]`, including UUID hex keys. Replays return the original 202 body even after the investigation completes. Expired keys can be renewed atomically; concurrent cross-operation conflicts roll back rather than saving untracked work. This extends the §10.1 format to Phase 5 starts instead of introducing a second key format.
+- **Interpretation labels.** Findings include a label distinguishing AI interpretation from the deterministic source observations. The Critic enforces referential, numeric, status and directional checks; arbitrary prose is interpretation, not independently proved semantic entailment. Source observations, quantitative values, verdicts and root-cause candidate ranking remain deterministic.
+- **Remaining numbering.** Because user Phase 5 absorbs baseline Phases 6 and 7, subsequent user phases map as follows: Phase 6 → baseline 8 (human-in-the-loop), Phase 7 → baseline 9 (replay), Phase 8 → baseline 10 (recovery approval), Phase 9 → baseline 11 (integrations), Phase 10 → baseline 12 (hardening and deferred account lifecycle), Phase 11 → baseline 13 (deployment). All baseline acceptance IDs retain their original numbering. No later phase is authorized by this mapping alone.
+- Reason: Complete the missing Phase 5 API contract, preserve durable retry semantics, distinguish evidence from model prose, and remove ambiguity left by the merged phases.
+- Supersedes: DATA_CONTRACTS §7.1 UUID-only key format for investigation starts, and AMD-8's offset mapping only for user phases after 5.

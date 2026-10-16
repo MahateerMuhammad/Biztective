@@ -34,6 +34,8 @@
 
 ## 4. Quality gates (CI must be green to merge or push to `main`)
 
+> **Amended by AMD-13 (Phase 5 completion audit):** the LLM output validator is implemented at `app/investigation/critic.py`; its coverage gate is ≥95%, as is `app/investigation/verification.py`. Phase 5 is backend-only and has no human interrupts or timeline UI. The real-provider integration test is opt-in (`ROOT_LIVE_LLM_TESTS=1` with `ANTHROPIC_API_KEY`); deterministic and fake-provider end-to-end investigations are required in CI. Unrun live tests must be reported as such. Original detection calibration and coverage thresholds remain unchanged.
+
 | Gate | Threshold |
 |---|---|
 | ruff (lint + format check, including `S` security rules) | 0 findings |
