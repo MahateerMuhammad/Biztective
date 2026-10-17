@@ -41,7 +41,7 @@ test("everything is reachable with the keyboard alone", async ({ page }) => {
   await expect(page.locator("#main")).toBeFocused();
 
   // Section navigation by keyboard: Tab to "Investigations" and follow it with Enter.
-  const target = page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: "Investigations" });
+  const target = page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Investigations" });
   for (let i = 0; i < 25 && !(await target.evaluate((el) => el === document.activeElement)); i++) {
     await page.keyboard.press("Tab");
   }
@@ -70,7 +70,7 @@ test("main screens fit a phone screen without sideways scrolling", async ({ page
 test("an expired session leads back to sign-in and never shows success", async ({ page, context }) => {
   const home = await signIn(page);
   await page.goto(`${home}/datasets/new`);
-  await expect(page.getByRole("heading", { name: "Upload dataset" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Upload data" })).toBeVisible();
   await context.clearCookies(); // the session expires while the form is open
   for (const kind of ["orders", "products", "customers", "returns"]) {
     await page.getByLabel(`${kind[0]!.toUpperCase()}${kind.slice(1)} (.csv)`).setInputFiles({
@@ -121,7 +121,7 @@ test("server errors are reported and nothing is shown as done", async ({ page })
   // foreign business is refused earlier, with a real 404, in the tenancy test below.)
   await page.goto(`${home}/investigations/00000000-0000-7000-8000-000000000000`);
   await expect(page.getByText("This page could not be found.")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Investigation workspace" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Investigation" })).toHaveCount(0);
 });
 
 test("another business's pages are not found, and a new business sees empty states", async ({ page }) => {
@@ -150,7 +150,7 @@ test("another business's pages are not found, and a new business sees empty stat
   // Empty states guide a first-time business to its first step.
   await page.goto(theirs);
   await expect(page.getByRole("heading", { name: "Start with your sales data" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Upload dataset" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Upload data" })).toBeVisible();
   await page.goto(`${theirs}/investigations`);
   await expect(page.getByText("No investigations yet.")).toBeVisible();
   await page.goto(`${theirs}/decisions`);
@@ -170,7 +170,7 @@ test("on a slow network the screen shows it is loading, then the content", async
     downloadThroughput: (400 * 1024) / 8,
     uploadThroughput: (400 * 1024) / 8,
   });
-  await page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: "Decision center" }).click();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Decision center" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Loading…" })).toBeVisible();
   await expect(page.getByRole("heading", { level: 1, name: "Decision center" })).toBeVisible({ timeout: 30_000 });
   await cdp.send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
@@ -186,7 +186,7 @@ test("main routes load fast and ship little JavaScript", async ({ page }) => {
     ["Investigations", `${home}/investigations`],
     ["Decision center", `${home}/decisions`],
     ["Data", `${home}/datasets`],
-    ...(workspace ? ([["Investigation workspace", workspace]] as [string, string][]) : []),
+    ...(workspace ? ([["Investigation", workspace]] as [string, string][]) : []),
     ...(plan ? ([["Recovery plan", plan]] as [string, string][]) : []),
   ];
   const results = [];

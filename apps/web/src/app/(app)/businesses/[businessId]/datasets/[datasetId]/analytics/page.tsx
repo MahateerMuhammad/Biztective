@@ -3,8 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { AutoRefresh } from "@/components/auto-refresh";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Disclosure, EmptyState, PageHeader, SectionCard, StatusChip, tableClass, tableWrap, tdClass, thClass, trClass } from "@/components/page";
 import {
   getAnalysis,
   getBusiness,
@@ -16,11 +15,20 @@ import {
   listInvestigations,
 } from "@/lib/api/server";
 import type { IncidentDetail, Restriction } from "@/lib/api/types";
-import { METRIC_LABELS, formatChange, formatCount, formatMetric, formatPercent } from "@/lib/format";
+import { METRIC_LABELS, formatChange, formatCount, formatDate, formatMetric, formatMoneyCompact, formatPercent } from "@/lib/format";
+import { investigationChip } from "@/lib/status";
+import type { InvestigationStatus } from "@/lib/api/types";
 
 import { StartInvestigation } from "./start-investigation";
 
 export const metadata: Metadata = { title: "Analytics" };
+
+const SEVERITY: Record<string, { label: string; tone: "err" | "warn" | "idle" }> = {
+  critical: { label: "Critical", tone: "err" },
+  high: { label: "High", tone: "err" },
+  medium: { label: "Medium", tone: "warn" },
+  low: { label: "Low", tone: "idle" },
+};
 
 const KPIS = [
   "net_revenue",
@@ -35,26 +43,24 @@ const KPIS = [
 ] as const;
 const SEGMENT_LABELS: Record<string, string> = {
   loyal: "Loyal",
-  at_risk: "At risk (overdue vs own cadence)",
+  at_risk: "At risk",
   dormant: "Dormant",
-  insufficient_history: "Insufficient history",
+  insufficient_history: "Too new to tell",
 };
 
 function Restrictions({ items }: { items: Restriction[] }) {
   if (items.length === 0) return null;
   return (
-    <Alert>
-      <AlertTitle>Data limitations</AlertTitle>
-      <AlertDescription>
-        <ul className="list-disc pl-4">
-          {items.map((r) => (
-            <li key={r.code}>
-              <span className="font-mono text-xs">{r.code}</span>: {r.message}
-            </li>
-          ))}
-        </ul>
-      </AlertDescription>
-    </Alert>
+    <Disclosure summary="What this can’t show" className="rounded-xl bg-card px-6 py-2 ring-1 ring-foreground/10">
+      <ul className="list-disc pl-5">
+        {items.map((r) => (
+          <li key={r.code}>
+            {r.message}
+            <span className="sr-only"> (code {r.code})</span>
+          </li>
+        ))}
+      </ul>
+    </Disclosure>
   );
 }
 
@@ -68,43 +74,42 @@ function Evidence({ incident, currency }: { incident: IncidentDetail; currency: 
     detail: string | null;
   }[];
   return (
-    <details className="mt-2">
-      <summary className="cursor-pointer text-sm underline-offset-4 hover:underline">
-        Evidence ({incident.evidence.length} items, source records)
-      </summary>
-      <ul className="mt-2 text-xs text-muted-foreground">
+    <Disclosure summary={`Show the evidence (${incident.evidence.length} checks)`}>
+      <ul className="mt-1 grid gap-0.5 text-sm">
         {incident.evidence.map((e) => (
           <li key={e.id}>
-            <span className="font-mono">{e.kind}</span> · sha256 {e.result_hash.slice(0, 16)}…
+            {e.kind.replaceAll("_", " ")} <span className="text-muted-foreground">· fingerprint {e.result_hash.slice(0, 12)}…</span>
           </li>
         ))}
       </ul>
       {sample.length > 0 ? (
-        <table className="mt-2 w-full text-left text-xs">
-          <caption className="sr-only">Top contributing source records</caption>
-          <thead>
-            <tr className="border-b">
-              <th scope="col" className="py-1 font-medium">File</th>
-              <th scope="col" className="py-1 text-right font-medium">Row</th>
-              <th scope="col" className="py-1 font-medium">Record</th>
-              <th scope="col" className="py-1 text-right font-medium">Amount</th>
-              <th scope="col" className="py-1 font-medium">Detail</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sample.map((s) => (
-              <tr key={`${s.file}-${s.source_row}`} className="border-b last:border-0">
-                <td className="py-1">{s.file}.csv</td>
-                <td className="py-1 text-right tabular-nums">{s.source_row}</td>
-                <td className="py-1 font-mono">{s.key}</td>
-                <td className="py-1 text-right tabular-nums">{formatMetric("refunds", s.amount, currency)}</td>
-                <td className="py-1">{s.detail ?? ""}</td>
+        <div className={`${tableWrap} mt-3`} tabIndex={0} role="region" aria-label="Table, scrollable">
+          <table className={tableClass}>
+            <caption className="sr-only">Top contributing source records</caption>
+            <thead>
+              <tr>
+                <th scope="col" className={thClass}>File</th>
+                <th scope="col" className={`${thClass} text-right`}>Row</th>
+                <th scope="col" className={thClass}>Record</th>
+                <th scope="col" className={`${thClass} text-right`}>Amount</th>
+                <th scope="col" className={thClass}>Detail</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {sample.map((s) => (
+                <tr key={`${s.file}-${s.source_row}`} className={trClass}>
+                  <td className={`${tdClass} capitalize`}>{s.file}</td>
+                  <td className={`${tdClass} text-right tabular-nums`}>{s.source_row}</td>
+                  <td className={tdClass}>{s.key}</td>
+                  <td className={`${tdClass} text-right tabular-nums`}>{formatMetric("refunds", s.amount, currency)}</td>
+                  <td className={tdClass}>{s.detail ?? ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : null}
-    </details>
+    </Disclosure>
   );
 }
 
@@ -116,15 +121,17 @@ export default async function AnalyticsPage({
   if (!business || !dataset) notFound();
   const currency = dataset.currency;
   const back = (
-    <Link href={`/businesses/${businessId}/datasets/${datasetId}`} className="text-sm underline-offset-4 hover:underline">
-      ← Dataset v{dataset.version}
+    <Link href={`/businesses/${businessId}/datasets/${datasetId}`} className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
+      ← Data version {dataset.version}
     </Link>
   );
   if (dataset.status !== "ready") {
     return (
-      <div className="grid gap-4">
-        {back}
-        <p>Analytics are available once the dataset is ready.</p>
+      <div className="grid gap-6">
+        <PageHeader back={back} title="Analytics" />
+        <SectionCard>
+          <EmptyState title="Analytics are not ready yet">They appear once the data check has finished.</EmptyState>
+        </SectionCard>
       </div>
     );
   }
@@ -154,207 +161,184 @@ export default async function AnalyticsPage({
   return (
     <div className="grid gap-6">
       {running ? <AutoRefresh /> : null}
-      <div>
-        {back}
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">Analytics</h1>
-        <p className="mt-1 text-sm" role="status" aria-live="polite">
-          {running
-            ? "Analysis in progress…"
+      <PageHeader
+        back={back}
+        title="Analytics"
+        subtitle={
+          running
+            ? "Analysing your data…"
             : analysis?.status === "insufficient_data"
-              ? `Analysed as of ${analysis.as_of ?? "—"}; not enough history for incident detection.`
+              ? `Updated through ${formatDate(analysis.as_of, true)}. Not enough history yet to spot changes.`
               : analysis?.status === "failed"
-                ? "The analysis failed and was rolled back."
-                : `Analysed as of ${analysis?.as_of}. All figures are computed from stored records.`}
-        </p>
-      </div>
+                ? "The analysis couldn’t finish. Nothing was changed."
+                : `Updated through ${formatDate(analysis?.as_of, true)}`
+        }
+        action={
+          !running && analysis?.status !== "failed" && business.role !== "viewer" ? (
+            <StartInvestigation businessId={businessId} datasetId={datasetId} />
+          ) : null
+        }
+      />
 
       <Restrictions items={restrictions} />
 
-      {!running && analysis?.status !== "failed" ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              <h2 className="text-base font-semibold">Investigations</h2>
-            </CardTitle>
-            <CardDescription>
-              ROOT explains the incidents with evidence and asks you for context the data cannot
-              show.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3">
-            {business.role !== "viewer" ? (
-              <StartInvestigation businessId={businessId} datasetId={datasetId} />
-            ) : null}
-            {investigations.length > 0 ? (
-              <ul className="grid gap-1 text-sm" aria-label="Investigations of this dataset">
-                {investigations.map((i) => (
-                  <li key={i.id}>
-                    <Link
-                      href={`/businesses/${businessId}/investigations/${i.id}`}
-                      className="underline-offset-4 hover:underline"
-                    >
-                      Investigation of {i.created_at.slice(0, 10)}: {i.status.replaceAll("_", " ")}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </CardContent>
-        </Card>
-      ) : null}
-
       {overall && period ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              <h2 className="text-base font-semibold">Equal-period comparison</h2>
-            </CardTitle>
-            <CardDescription>
-              {period.current.from} – {period.current.to} versus{" "}
-              {period.previous.available ? `${period.previous.from} – ${period.previous.to}` : "no comparable earlier period"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+        <SectionCard
+          title="This period vs the last"
+          help={`${formatDate(period.current.from)} – ${formatDate(period.current.to, true)} compared with ${
+            period.previous.available
+              ? `${formatDate(period.previous.from)} – ${formatDate(period.previous.to, true)}`
+              : "an earlier period (none comparable yet)"
+          }`}
+        >
+          <div className={tableWrap} tabIndex={0} role="region" aria-label="Table, scrollable">
+            <table className={tableClass}>
               <caption className="sr-only">Key metrics, current versus previous period</caption>
               <thead>
-                <tr className="border-b">
-                  <th scope="col" className="py-2 font-medium">Metric</th>
-                  <th scope="col" className="py-2 text-right font-medium">Current</th>
-                  <th scope="col" className="py-2 text-right font-medium">Previous</th>
-                  <th scope="col" className="py-2 text-right font-medium">Change</th>
+                <tr>
+                  <th scope="col" className={thClass}>Metric</th>
+                  <th scope="col" className={`${thClass} text-right`}>Now</th>
+                  <th scope="col" className={`${thClass} text-right`}>Before</th>
+                  <th scope="col" className={`${thClass} text-right`}>Change</th>
                 </tr>
               </thead>
               <tbody>
                 {KPIS.map((k) => (
-                  <tr key={k} className="border-b last:border-0">
-                    <th scope="row" className="py-2 font-normal">{METRIC_LABELS[k]}</th>
-                    <td className="py-2 text-right tabular-nums">{formatMetric(k, overall.current[k], currency)}</td>
-                    <td className="py-2 text-right tabular-nums">
+                  <tr key={k} className={trClass}>
+                    <th scope="row" className={`${tdClass} font-normal`}>{METRIC_LABELS[k]}</th>
+                    <td className={`${tdClass} text-right font-medium tabular-nums`}>{formatMetric(k, overall.current[k], currency)}</td>
+                    <td className={`${tdClass} text-right tabular-nums text-muted-foreground`}>
                       {overall.previous ? formatMetric(k, overall.previous[k], currency) : "—"}
                     </td>
-                    <td className="py-2 text-right tabular-nums">{formatChange(k, overall.change?.[k], currency)}</td>
+                    <td className={`${tdClass} text-right tabular-nums`}>{formatChange(k, overall.change?.[k], currency)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </CardContent>
-        </Card>
+          </div>
+        </SectionCard>
       ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            <h2 className="text-base font-semibold">Incidents</h2>
-          </CardTitle>
-          <CardDescription>
-            Deterministic detection: last 4 complete weeks against the previous 12. Impacts are per
-            incident and must not be added together.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {analysis?.status === "completed" && incidents.length === 0 ? (
-            <p className="text-sm">No material anomalies were found.</p>
-          ) : null}
-          {incidents.length > 0 ? (
-            <ol className="grid gap-4">
-              {incidents.map((i) => (
-                <li key={i.id} id={`incident-${i.id}`} className="scroll-mt-4 rounded-lg border p-3">
-                  <p className="text-sm font-medium">
-                    #{i.rank} · <span className="uppercase">{i.severity}</span> ·{" "}
+      <SectionCard
+        title="Biggest changes to look at"
+        help="The last 4 complete weeks against the 12 before. Impacts overlap and must not be added together."
+      >
+        {analysis?.status === "completed" && incidents.length === 0 ? (
+          <p className="text-[15px] text-muted-foreground">No material changes were found.</p>
+        ) : null}
+        {incidents.length > 0 ? (
+          <ol className="grid gap-4">
+            {incidents.map((i) => {
+              const sev = SEVERITY[i.severity] ?? { label: i.severity, tone: "idle" as const };
+              return (
+                <li key={i.id} id={`incident-${i.id}`} className="scroll-mt-24 grid gap-2 rounded-xl border border-border p-4">
+                  <p className="flex flex-wrap items-center gap-2 text-base font-medium">
+                    <StatusChip tone={sev.tone}>{sev.label}</StatusChip>
                     {METRIC_LABELS[i.metric] ?? i.metric} in {i.dimension === "overall" ? "the whole business" : `${i.dimension} “${i.value}”`}
                   </p>
-                  <p className="mt-1 text-sm">
-                    {formatMetric(i.metric, i.stats.current_value as string, currency)} vs a baseline median of{" "}
-                    {formatMetric(i.metric, i.stats.baseline_median as string, currency)}
-                    {i.stats.z !== null ? `, robust z ${String(i.stats.z)}` : ""}. Estimated impact{" "}
-                    {formatMetric("net_revenue", i.impact, currency)}.
+                  <p className="text-[15px]">
+                    {formatMetric(i.metric, i.stats.current_value as string, currency)} now, against a usual{" "}
+                    {formatMetric(i.metric, i.stats.baseline_median as string, currency)}. Impact about{" "}
+                    <span className="font-medium" title={formatMetric("net_revenue", i.impact, currency)}>
+                      {formatMoneyCompact(i.impact, currency)}
+                    </span>
+                    .
+                    {i.onset_week ? ` Since the week of ${formatDate(i.onset_week)}.` : ""}
+                    {i.stats.z !== null ? <span className="sr-only">{` Robust z-score ${String(i.stats.z)}.`}</span> : null}
                   </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Records in scope: {formatCount(i.affected.order_lines)} order lines,{" "}
-                    {formatCount(i.affected.orders)} orders, {formatCount(i.affected.customers)} customers,{" "}
-                    {formatCount(i.affected.returns)} returns.
+                  <p className="text-sm text-muted-foreground">
+                    Based on {formatCount(i.affected.order_lines)} order lines, {formatCount(i.affected.orders)} orders,{" "}
+                    {formatCount(i.affected.customers)} customers and {formatCount(i.affected.returns)} returns.
                   </p>
                   <Evidence incident={i} currency={currency} />
                 </li>
-              ))}
-            </ol>
-          ) : null}
-        </CardContent>
-      </Card>
+              );
+            })}
+          </ol>
+        ) : null}
+      </SectionCard>
+
+      {investigations.length > 0 ? (
+        <SectionCard title="Investigations of this data" help="Biztective explains changes with evidence and asks you for context the data can’t show.">
+          <ul className="grid gap-1" aria-label="Investigations of this data">
+            {investigations.map((i) => {
+              const chip = investigationChip(i.status as InvestigationStatus);
+              return (
+                <li key={i.id}>
+                  <Link
+                    href={`/businesses/${businessId}/investigations/${i.id}`}
+                    className="-mx-2 flex min-h-11 items-center justify-between gap-3 rounded-lg px-2 text-[15px] hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
+                  >
+                    <span>Investigation of {formatDate(i.created_at, true)}</span>
+                    <StatusChip tone={chip.tone}>{chip.label}</StatusChip>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </SectionCard>
+      ) : null}
 
       {segments ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              <h2 className="text-base font-semibold">Customer segments</h2>
-            </CardTitle>
-            <CardDescription>{segments.data.rules.note}</CardDescription>
-          </CardHeader>
-          <CardContent className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+        <SectionCard title="Customer segments" help={segments.data.rules.note}>
+          <div className={tableWrap} tabIndex={0} role="region" aria-label="Table, scrollable">
+            <table className={tableClass}>
               <caption className="sr-only">Customers by lifecycle segment</caption>
               <thead>
-                <tr className="border-b">
-                  <th scope="col" className="py-2 font-medium">Segment</th>
-                  <th scope="col" className="py-2 text-right font-medium">Customers</th>
-                  <th scope="col" className="py-2 text-right font-medium">Share</th>
-                  <th scope="col" className="py-2 text-right font-medium">Net revenue (365 days)</th>
+                <tr>
+                  <th scope="col" className={thClass}>Segment</th>
+                  <th scope="col" className={`${thClass} text-right`}>Customers</th>
+                  <th scope="col" className={`${thClass} text-right`}>Share</th>
+                  <th scope="col" className={`${thClass} text-right`}>Net revenue (365 days)</th>
                 </tr>
               </thead>
               <tbody>
                 {segments.data.segments.map((s) => (
-                  <tr key={s.segment} className="border-b last:border-0">
-                    <th scope="row" className="py-2 font-normal">{SEGMENT_LABELS[s.segment] ?? s.segment}</th>
-                    <td className="py-2 text-right tabular-nums">{formatCount(s.customers)}</td>
-                    <td className="py-2 text-right tabular-nums">{formatPercent(s.share)}</td>
-                    <td className="py-2 text-right tabular-nums">{formatMetric("net_revenue", s.monetary_365, currency)}</td>
+                  <tr key={s.segment} className={trClass}>
+                    <th scope="row" className={`${tdClass} font-normal`}>{SEGMENT_LABELS[s.segment] ?? s.segment}</th>
+                    <td className={`${tdClass} text-right tabular-nums`}>{formatCount(s.customers)}</td>
+                    <td className={`${tdClass} text-right tabular-nums`}>{formatPercent(s.share)}</td>
+                    <td className={`${tdClass} text-right tabular-nums`}>{formatMetric("net_revenue", s.monetary_365, currency)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </CardContent>
-        </Card>
+          </div>
+        </SectionCard>
       ) : null}
 
       {products ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              <h2 className="text-base font-semibold">Top products</h2>
-            </CardTitle>
-            <CardDescription>By net revenue over the whole dataset.</CardDescription>
-          </CardHeader>
-          <CardContent className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+        <SectionCard title="Top products" help="By net revenue over all of this data.">
+          <div className={tableWrap} tabIndex={0} role="region" aria-label="Table, scrollable">
+            <table className={tableClass}>
               <caption className="sr-only">Product performance and return rates</caption>
               <thead>
-                <tr className="border-b">
-                  <th scope="col" className="py-2 font-medium">Product</th>
-                  <th scope="col" className="py-2 font-medium">Category</th>
-                  <th scope="col" className="py-2 text-right font-medium">Net revenue</th>
-                  <th scope="col" className="py-2 text-right font-medium">Gross margin</th>
-                  <th scope="col" className="py-2 text-right font-medium">Unit return rate</th>
-                  <th scope="col" className="py-2 text-right font-medium">Refund rate</th>
+                <tr>
+                  <th scope="col" className={thClass}>Product</th>
+                  <th scope="col" className={thClass}>Category</th>
+                  <th scope="col" className={`${thClass} text-right`}>Net revenue</th>
+                  <th scope="col" className={`${thClass} text-right`}>Gross margin</th>
+                  <th scope="col" className={`${thClass} text-right`}>Returned</th>
+                  <th scope="col" className={`${thClass} text-right`}>Refund rate</th>
                 </tr>
               </thead>
               <tbody>
                 {products.data.map((p) => (
-                  <tr key={p.product_id} className="border-b last:border-0">
-                    <th scope="row" className="py-2 font-normal">
-                      {p.product_name} <span className="text-xs text-muted-foreground">({p.product_id})</span>
+                  <tr key={p.product_id} className={trClass}>
+                    <th scope="row" className={`${tdClass} font-normal`} title={p.product_id}>
+                      {p.product_name}
                     </th>
-                    <td className="py-2">{p.category}</td>
-                    <td className="py-2 text-right tabular-nums">{formatMetric("net_revenue", p.metrics.net_revenue, currency)}</td>
-                    <td className="py-2 text-right tabular-nums">{formatPercent(p.metrics.gross_margin_pct)}</td>
-                    <td className="py-2 text-right tabular-nums">{formatPercent(p.metrics.unit_return_rate)}</td>
-                    <td className="py-2 text-right tabular-nums">{formatPercent(p.metrics.refund_rate)}</td>
+                    <td className={tdClass}>{p.category}</td>
+                    <td className={`${tdClass} text-right tabular-nums`}>{formatMetric("net_revenue", p.metrics.net_revenue, currency)}</td>
+                    <td className={`${tdClass} text-right tabular-nums`}>{formatPercent(p.metrics.gross_margin_pct)}</td>
+                    <td className={`${tdClass} text-right tabular-nums`}>{formatPercent(p.metrics.unit_return_rate)}</td>
+                    <td className={`${tdClass} text-right tabular-nums`}>{formatPercent(p.metrics.refund_rate)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </CardContent>
-        </Card>
+          </div>
+        </SectionCard>
       ) : null}
     </div>
   );

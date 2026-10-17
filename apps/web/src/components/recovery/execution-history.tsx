@@ -1,3 +1,4 @@
+import { formatDateTime } from "@/lib/format";
 import type { ActionDetail, ActionStatus } from "@/lib/api/types";
 
 export const ACTION_STATUS_TEXT: Record<ActionStatus, string> = {
@@ -14,15 +15,15 @@ const ERROR_TEXT: Record<string, string> = {
   approver_not_owner: "The person who approved is no longer an owner.",
   requester_not_owner: "The person who started it is no longer an owner.",
   integration_not_verified: "The spreadsheet was disconnected.",
-  integration_credentials_invalid: "Google refused ROOT's credentials. An administrator must renew them.",
-  integration_permission_denied: "ROOT can no longer edit the spreadsheet. Share it again with the service account.",
+  integration_credentials_invalid: "Google refused Biztective's credentials. An administrator must renew them.",
+  integration_permission_denied: "Biztective can no longer edit the spreadsheet. Share it again with the service account.",
   destination_not_found: "The spreadsheet no longer exists.",
-  destination_layout_mismatch: "A tab with ROOT's name has different columns. Rename that tab and retry.",
+  destination_layout_mismatch: "A tab with the same name as a Biztective tab has different columns. Rename that tab and retry.",
   destination_invalid: "Google refused the request for this spreadsheet.",
-  verification_mismatch: "Rows in the sheet differ from what was approved, or appear twice. ROOT did not overwrite them.",
+  verification_mismatch: "Rows in the sheet differ from what was approved, or appear twice. Biztective did not overwrite them.",
   write_unconfirmed: "Google did not confirm the write after several tries.",
   network_error: "Google could not be reached.",
-  rate_limited: "Google asked ROOT to slow down.",
+  rate_limited: "Google asked Biztective to slow down.",
   provider_unavailable: "Google reported a server error.",
   timeout: "Google did not answer in time.",
   attempt_timeout: "The attempt took too long.",
@@ -30,7 +31,7 @@ const ERROR_TEXT: Record<string, string> = {
 };
 
 function when(value: string | null): string {
-  return value ? value.slice(0, 19).replace("T", " ") : "—";
+  return value ? formatDateTime(value) : "—";
 }
 
 export function ExecutionHistory({ actions }: { actions: ActionDetail[] }) {
@@ -49,8 +50,8 @@ export function ExecutionHistory({ actions }: { actions: ActionDetail[] }) {
             <a href={a.destination.url} target="_blank" rel="noopener noreferrer" className="underline underline-offset-4">
               Open the spreadsheet
             </a>{" "}
-            · action <span className="font-mono text-xs">{a.id}</span> · payload hash{" "}
-            <span className="font-mono text-xs">{a.payload_hash.slice(0, 12)}…</span>
+            · action <span className="tabular-nums text-[13px]">{a.id}</span> · payload hash{" "}
+            <span className="tabular-nums text-[13px]">{a.payload_hash.slice(0, 12)}…</span>
           </p>
           <table className="w-full text-left">
             <caption className="sr-only">Rows per tab</caption>
@@ -68,7 +69,7 @@ export function ExecutionHistory({ actions }: { actions: ActionDetail[] }) {
                   <td>{tab}</td>
                   <td>{count}</td>
                   <td>{a.verification?.tabs[tab]?.found ?? "—"}</td>
-                  <td className="font-mono text-xs">{a.external_ref?.updated_ranges[tab] ?? "—"}</td>
+                  <td className="tabular-nums text-[13px]">{a.external_ref?.updated_ranges[tab] ?? "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -83,7 +84,7 @@ export function ExecutionHistory({ actions }: { actions: ActionDetail[] }) {
           ) : null}
           {a.not_executed.length ? (
             <p className="text-muted-foreground">
-              Not carried out by ROOT (do these yourself if you still want them):{" "}
+              Not carried out by Biztective (do these yourself if you still want them):{" "}
               {a.not_executed.map((n) => `${n.strategy} · ${n.action_type.replaceAll("_", " ")}`).join("; ")}.
             </p>
           ) : null}
@@ -110,7 +111,7 @@ export function ExecutionHistory({ actions }: { actions: ActionDetail[] }) {
                     </td>
                     <td>{when(t.started_at)}</td>
                     <td>{t.writes_sent ? "yes" : "no"}</td>
-                    <td className="font-mono text-xs">{t.calls.map((c) => `${c.op}:${c.status}`).join(" ")}</td>
+                    <td className="tabular-nums text-[13px]">{t.calls.map((c) => `${c.op}:${c.status}`).join(" ")}</td>
                   </tr>
                 ))}
               </tbody>

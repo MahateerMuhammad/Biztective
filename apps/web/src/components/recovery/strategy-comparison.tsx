@@ -46,13 +46,13 @@ export function StrategyComparison({ content }: { content: PlanContent }) {
                   <th scope="row" className="py-2 pr-3 font-normal">
                     <span className="font-medium">{s.title}</span>
                     {chosen ? <Badge className="ml-2 bg-foreground text-background">Selected</Badge> : null}
-                    <span className="block font-mono text-xs text-muted-foreground">{s.incident.key}</span>
+                    <span className="block tabular-nums text-[13px] text-muted-foreground">{s.incident.key}</span>
                   </th>
                   {e ? (
                     <>
                       <td className="py-2 pr-3 text-right tabular-nums">
                         {formatMoney(e.mid.benefit, c)}
-                        <span className="block text-xs text-muted-foreground">
+                        <span className="block text-[13px] text-muted-foreground">
                           {formatMoney(e.low.benefit, c)}–{formatMoney(e.high.benefit, c)}
                         </span>
                       </td>
@@ -77,14 +77,14 @@ export function StrategyComparison({ content }: { content: PlanContent }) {
                       ))}
                     </span>
                   </td>
-                  <td className="py-2 text-xs text-muted-foreground">{s.tradeoffs[0] ?? "—"}</td>
+                  <td className="py-2 text-[13px] text-muted-foreground">{s.tradeoffs[0] ?? "—"}</td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
-      <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+      <p className="flex flex-wrap items-center gap-2 text-[13px] text-muted-foreground">
         <KindBadge kind="estimate" /> Benefits and costs come from your assumptions applied to measured evidence; they are not
         results.
       </p>

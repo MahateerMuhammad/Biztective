@@ -28,7 +28,7 @@ class SeedSettings(BaseSettings):
     database_url_migrations: SecretStr
     demo_owner_email: str = Field(min_length=3, max_length=254, pattern=r"^[^@\s]+@[^@\s]+$")
     demo_owner_password: SecretStr
-    demo_owner_name: str = Field(default="Demo Owner", min_length=1, max_length=100)
+    demo_owner_name: str = Field(default="Owner", min_length=1, max_length=100)
     demo_business_name: str = Field(min_length=1, max_length=120)
     demo_business_currency: str = Field(default="USD", pattern=r"^[A-Z]{3}$")
     demo_business_timezone: str = "UTC"

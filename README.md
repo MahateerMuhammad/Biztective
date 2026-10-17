@@ -1,4 +1,4 @@
-# ROOT 2.0
+# Biztective
 
 Autonomous business investigation and recovery platform (NaSCon Agentika 2.0).
 Specifications live in [docs/](docs/): start with [ROOT_MASTER_PLAN.md](docs/ROOT_MASTER_PLAN.md).
@@ -45,17 +45,17 @@ cd services/api
 uv run python -m scripts.generate_dataset --seed 7 --out /tmp/root-demo   # add --noise 0.02 / --pii-column
 ```
 
-After validation, ROOT analyses each ready dataset automatically. Open **View analytics** for:
+After validation, Biztective analyses each ready dataset automatically. Open **View analytics** for:
 - the equal-period comparison, product return rates and customer lifecycle segments
 - deterministic incidents, each with its source-record evidence
 - any data limitations (for example missing costs) that make a figure unavailable
 
-From the analytics page, **Start investigation** opens the Investigation Workspace. ROOT
+From the analytics page, **Start investigation** opens the Investigation Workspace. Biztective
 investigates every incident with read-only evidence tools, drafts findings (version 1) and then
 pauses durably on the single most useful question the data cannot answer, for example whether a
 discount rise was a planned clearance. An owner or analyst answers with an option and optional
 free text; the answer must quote the paused checkpoint, is stored with its author, and resumes the
-exact LangGraph checkpoint. ROOT re-evaluates the affected hypotheses, investigates the
+exact LangGraph checkpoint. Biztective re-evaluates the affected hypotheses, investigates the
 alternatives the answer points to, and records a new version. **Investigation replay** compares
 any two versions: which findings, hypotheses, root causes and recommendations changed, and that
 every original measurement is unchanged. At most 3 questions per incident and 6 per

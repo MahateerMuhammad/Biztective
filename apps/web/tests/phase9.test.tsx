@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { KindBadge } from "@/components/kind-badge";
@@ -7,9 +7,11 @@ import { ProofChain } from "@/components/investigation/proof-chain";
 import { Pager, cursorParam } from "@/components/pager";
 import { StrategyComparison } from "@/components/recovery/strategy-comparison";
 import { Segments } from "@/components/segments";
+import type { NavItem } from "@/components/ui/bottom-nav-bar";
 import type { InvestigationIncident, PlanContent } from "@/lib/api/types";
 
-vi.mock("next/navigation", () => ({ usePathname: () => "/businesses/b1/investigations", useRouter: () => ({ refresh: vi.fn() }) }));
+let pathname = "/businesses/b1/investigations";
+vi.mock("next/navigation", () => ({ usePathname: () => pathname, useRouter: () => ({ refresh: vi.fn() }) }));
 // Recharts measures the DOM; the chart is a visual aid with a table alternative, tested via the table.
 vi.mock("@/components/charts/strategy-chart", () => ({ StrategyChart: () => <div data-testid="chart" /> }));
 
@@ -195,19 +197,23 @@ describe("StrategyComparison", () => {
   });
 });
 
-describe("NavLink", () => {
-  it("marks the current section for assistive technology", async () => {
-    const { NavLink } = await import("@/components/nav-link");
-    render(
-      <>
-        <NavLink href="/businesses/b1" exact>
-          Business health
-        </NavLink>
-        <NavLink href="/businesses/b1/investigations">Investigations</NavLink>
-      </>,
-    );
-    expect(screen.getByRole("link", { name: "Investigations" }).getAttribute("aria-current")).toBe("page");
-    expect(screen.getByRole("link", { name: "Business health" }).getAttribute("aria-current")).toBeNull();
-    fireEvent.focus(screen.getByRole("link", { name: "Investigations" }));
+describe("Section navigation", () => {
+  it("marks the current section, including nested routes, and shows every label on desktop", async () => {
+    const { AppNav, sectionItems } = await import("@/components/app-nav");
+    const { isActive } = await import("@/components/ui/bottom-nav-bar");
+    const items = sectionItems("b1", true);
+    const at = (n: number) => items[n] as NavItem;
+    expect(items.map((i) => i.label)).toEqual(["Business health", "Investigations", "Decision center", "Data", "Integrations"]);
+    // Business health matches only the index route; the others match by prefix.
+    expect(isActive("/businesses/b1", at(0))).toBe(true);
+    expect(isActive("/businesses/b1/datasets/d1", at(0))).toBe(false);
+    expect(isActive("/businesses/b1/datasets/d1/analytics", at(3))).toBe(true);
+    expect(isActive("/businesses/b1/datasetsx", at(3))).toBe(false);
+    expect(sectionItems("b1", false).some((i) => i.label === "Integrations")).toBe(false);
+    pathname = "/businesses/b1/investigations/i1";
+    render(<AppNav businessId="b1" canIntegrate />);
+    const current = screen.getAllByRole("link", { name: "Investigations" }).filter((l) => l.getAttribute("aria-current") === "page");
+    expect(current.length).toBe(2); // the desktop and the mobile bar
+    expect(screen.getAllByRole("link", { name: "Business health" }).every((l) => l.getAttribute("aria-current") === null)).toBe(true);
   });
 });

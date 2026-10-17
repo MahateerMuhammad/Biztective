@@ -55,7 +55,7 @@ function Criterion({ c, evidenceBase }: { c: CriterionView; evidenceBase: string
           ) : null}
         </span>
         {(c.basis as unknown[]).filter(isSegments).map((segments, i) => (
-          <span key={i} className="text-xs text-muted-foreground">
+          <span key={i} className="text-[13px] text-muted-foreground">
             <Segments segments={segments} evidenceBase={evidenceBase} />
           </span>
         ))}
@@ -73,7 +73,7 @@ export function ProofChain({ incident, evidenceBase }: { incident: Investigation
     <ol className="grid gap-5 border-l-2 border-border pl-5" aria-label="Proof chain">
       <li className="relative grid gap-2">
         <span aria-hidden="true" className="absolute top-1 -left-[27px] size-3 rounded-full border-2 border-background bg-fact-foreground" />
-        <h4 className="flex items-center gap-2 text-sm font-semibold">
+        <h4 className="flex items-center gap-2 text-base font-semibold">
           1. What changed <KindBadge kind="fact" />
         </h4>
         <ul className="grid gap-1 text-sm" aria-label="Measured facts">
@@ -87,10 +87,10 @@ export function ProofChain({ incident, evidenceBase }: { incident: Investigation
 
       <li className="relative grid gap-2">
         <span aria-hidden="true" className="absolute top-1 -left-[27px] size-3 rounded-full border-2 border-background bg-hypothesis-foreground" />
-        <h4 className="flex items-center gap-2 text-sm font-semibold">
+        <h4 className="flex items-center gap-2 text-base font-semibold">
           2. Competing explanations <KindBadge kind="hypothesis" />
         </h4>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-[13px] text-muted-foreground">
           Each explanation is scored by fixed rules against the evidence. The AI may word the findings; it never decides a verdict.
         </p>
         <ul className="grid gap-3">
@@ -100,12 +100,12 @@ export function ProofChain({ incident, evidenceBase }: { incident: Investigation
                 <summary className="flex cursor-pointer flex-wrap items-center gap-2">
                   <span className="font-medium">{templateLabel(h.template)}</span>
                   <Badge className={VERDICT[h.status]}>{STATUS_LABELS[h.status] ?? h.status}</Badge>
-                  <span className="text-xs text-muted-foreground tabular-nums">
+                  <span className="text-[13px] text-muted-foreground tabular-nums">
                     confidence {Math.round(Number(h.confidence) * 100)}%
                   </span>
-                  {h.source === "human_context" ? <span className="text-xs text-muted-foreground">added after your answer</span> : null}
+                  {h.source === "human_context" ? <span className="text-[13px] text-muted-foreground">added after your answer</span> : null}
                   {h.interpretation ? (
-                    <span className="flex items-center gap-1 text-xs">
+                    <span className="flex items-center gap-1 text-[13px]">
                       <KindBadge kind="human" />
                       {h.interpretation === "intended" ? "Deliberate business decision" : "Confirmed as unplanned"}
                     </span>
@@ -117,7 +117,7 @@ export function ProofChain({ incident, evidenceBase }: { incident: Investigation
                   ))}
                 </ul>
                 {h.conflicts.length > 0 ? (
-                  <p role="note" className="mt-2 text-xs text-risk-foreground">
+                  <p role="note" className="mt-2 text-[13px] text-risk-foreground">
                     An answer contradicts the measured data here; the measurements were kept.
                   </p>
                 ) : null}
@@ -129,15 +129,15 @@ export function ProofChain({ incident, evidenceBase }: { incident: Investigation
 
       <li className="relative grid gap-2">
         <span aria-hidden="true" className="absolute top-1 -left-[27px] size-3 rounded-full border-2 border-background bg-fact-foreground" />
-        <h4 className="flex items-center gap-2 text-sm font-semibold">
+        <h4 className="flex items-center gap-2 text-base font-semibold">
           3. Evidence trail <KindBadge kind="fact" />
         </h4>
-        <ul className="flex flex-wrap gap-2 text-xs" aria-label="Evidence items">
+        <ul className="flex flex-wrap gap-2 text-[13px]" aria-label="Evidence items">
           {incident.evidence.map((e) => (
             <li key={e.id}>
               <Link
                 href={`${evidenceBase}/${e.id}`}
-                className="inline-flex items-center gap-1 rounded-md border px-2 py-1 hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
+                className="inline-flex min-h-9 items-center gap-1 rounded-md border px-2.5 py-1 hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
               >
                 {EVIDENCE[e.kind] ?? e.kind}
                 <span className="text-muted-foreground">· {SOURCE[e.requested_by] ?? e.requested_by}</span>
@@ -149,7 +149,7 @@ export function ProofChain({ incident, evidenceBase }: { incident: Investigation
 
       <li className="relative grid gap-2">
         <span aria-hidden="true" className="absolute top-1 -left-[27px] size-3 rounded-full border-2 border-background bg-foreground" />
-        <h4 className="text-sm font-semibold">4. Conclusion</h4>
+        <h4 className="text-base font-semibold">4. Conclusion</h4>
         <p className="text-sm">
           {root ? (
             <>

@@ -1,30 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ClipboardList } from "lucide-react";
 
+import { EmptyState, PageHeader, SectionCard, StatusChip, rowLinkClass, tableClass, tableWrap, tdClass, thClass, trClass } from "@/components/page";
 import { Pager, cursorParam } from "@/components/pager";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button";
 import { getBusiness, pagePlans } from "@/lib/api/server";
-import type { ActionStatus, PlanStatus } from "@/lib/api/types";
+import { formatDateTime } from "@/lib/format";
+import { executionLabel, planChip } from "@/lib/status";
 
 export const metadata: Metadata = { title: "Decision center" };
-
-const PLAN: Record<PlanStatus, string> = {
-  queued: "Preparing",
-  running: "Preparing",
-  awaiting_decision: "Waiting for a decision",
-  approved: "Approved",
-  rejected: "Rejected",
-  failed: "Failed",
-};
-const EXECUTION: Record<ActionStatus, string> = {
-  pending: "In progress",
-  succeeded: "Written, checking",
-  verified: "Verified in the sheet",
-  failed: "Failed, nothing written",
-  manual_review: "Needs review",
-};
 
 export default async function DecisionsPage({ params, searchParams }: PageProps<"/businesses/[businessId]/decisions">) {
   const { businessId } = await params;
@@ -33,58 +19,51 @@ export default async function DecisionsPage({ params, searchParams }: PageProps<
   if (!business) notFound();
   return (
     <div className="grid gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Decision center</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Recovery plans built from validated findings: compare strategies, decide, and track what was carried out.
-        </p>
-      </div>
-      <Card>
-        <CardContent className="overflow-x-auto pt-4">
-          {page.items.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No recovery plans yet. A plan can be created from a completed investigation.{" "}
-              <Link href={`/businesses/${businessId}/investigations`} className="font-medium underline-offset-4 hover:underline">
-                See investigations
-              </Link>
-            </p>
-          ) : (
-            <table className="w-full text-left text-sm">
+      <PageHeader title="Decision center" subtitle="Compare ways to recover, decide, and track what was carried out." />
+      <SectionCard>
+        {page.items.length === 0 ? (
+          <EmptyState
+            icon={ClipboardList}
+            title="No recovery plans yet"
+            action={<Link href={`/businesses/${businessId}/investigations`} className={buttonVariants()}>See investigations</Link>}
+          >
+            A plan can be created from a completed investigation.
+          </EmptyState>
+        ) : (
+          <div className={tableWrap} tabIndex={0} role="region" aria-label="Table, scrollable">
+            <table className={tableClass}>
               <caption className="sr-only">Recovery plans, newest first</caption>
               <thead>
-                <tr className="border-b">
-                  <th scope="col" className="py-2 font-medium">Created</th>
-                  <th scope="col" className="py-2 font-medium">Decision</th>
-                  <th scope="col" className="py-2 font-medium">Version</th>
-                  <th scope="col" className="py-2 font-medium">Execution</th>
+                <tr>
+                  <th scope="col" className={thClass}>Created</th>
+                  <th scope="col" className={thClass}>Decision</th>
+                  <th scope="col" className={thClass}>Progress</th>
                 </tr>
               </thead>
               <tbody>
-                {page.items.map((p) => (
-                  <tr key={p.id} className="border-b last:border-0">
-                    <td className="py-2">
-                      <Link href={`/businesses/${businessId}/recovery-plans/${p.id}`} className="font-medium underline-offset-4 hover:underline">
-                        {p.created_at.slice(0, 16).replace("T", " ")}
-                      </Link>
-                    </td>
-                    <td className="py-2">
-                      <Badge className={p.status === "awaiting_decision" ? "border-human-foreground/30 bg-human text-human-foreground" : "bg-muted"}>
-                        {PLAN[p.status]}
-                      </Badge>
-                    </td>
-                    <td className="py-2 tabular-nums">
-                      {p.current_version || "—"}
-                      {p.approved_version ? ` (approved v${p.approved_version})` : ""}
-                    </td>
-                    <td className="py-2">{p.execution_status ? EXECUTION[p.execution_status] : "—"}</td>
-                  </tr>
-                ))}
+                {page.items.map((p) => {
+                  const chip = planChip(p.status);
+                  return (
+                    <tr key={p.id} className={trClass}>
+                      <td className={tdClass}>
+                        <Link href={`/businesses/${businessId}/recovery-plans/${p.id}`} className={rowLinkClass}>
+                          {formatDateTime(p.created_at)}
+                        </Link>
+                      </td>
+                      <td className={tdClass}>
+                        <StatusChip tone={chip.tone}>{chip.label}</StatusChip>
+                        {p.approved_version ? <span className="ml-2 text-muted-foreground">Version {p.approved_version} approved</span> : null}
+                      </td>
+                      <td className={tdClass}>{p.execution_status ? executionLabel(p.execution_status) : "—"}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
-          )}
-          <Pager path={`/businesses/${businessId}/decisions`} cursor={cursor} next={page.next_cursor} />
-        </CardContent>
-      </Card>
+          </div>
+        )}
+        <Pager path={`/businesses/${businessId}/decisions`} cursor={cursor} next={page.next_cursor} />
+      </SectionCard>
     </div>
   );
 }

@@ -62,7 +62,7 @@ export function ExecutionPanel({
       {integrationReady && !current ? (
         <>
           <p>
-            ROOT will add the approved review tasks and the customer-service queue for version {approved.version} to your
+            Biztective will add the approved review tasks and the customer-service queue for version {approved.version} to your
             connected spreadsheet, then read them back to check them. No customer is contacted.
           </p>
           <div>

@@ -1,4 +1,7 @@
+import { ArrowDown, ArrowRight, ArrowUp } from "lucide-react";
 import type { ReactNode } from "react";
+
+import { formatDate } from "@/lib/format";
 
 /* Building blocks for the Business health widgets. Neutral theme tokens, blue for volume, and
  * status colours only for status. Every status also carries a text label (WCAG 1.4.1). */
@@ -13,14 +16,14 @@ export const DOT: Record<Tone, string> = {
 };
 
 export const TEXT: Record<Tone, string> = {
-  ok: "text-emerald-700 dark:text-emerald-400",
+  ok: "text-emerald-800 dark:text-emerald-400",
   warn: "text-amber-700 dark:text-amber-300",
   err: "text-rose-700 dark:text-rose-400",
   idle: "text-muted-foreground",
 };
 
 export const CHIP: Record<Tone, string> = {
-  ok: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  ok: "bg-emerald-500/10 text-emerald-800 dark:text-emerald-300",
   warn: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
   err: "bg-rose-500/10 text-rose-700 dark:text-rose-300",
   idle: "bg-foreground/[0.06] text-muted-foreground",
@@ -46,10 +49,10 @@ export function Shell({
   children: ReactNode;
 }) {
   return (
-    <section className="@container flex h-full flex-col gap-4 p-4 sm:p-5">
-      <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-[14px] leading-none">
-        <h2 className="truncate font-mono text-[11px] tracking-[0.1em] text-muted-foreground uppercase">{title}</h2>
-        {meta ? <span className="shrink-0 text-[12px] text-muted-foreground">{meta}</span> : null}
+    <section className="@container flex h-full flex-col gap-3 p-6">
+      <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 leading-snug">
+        <h2 className="truncate text-sm font-medium text-muted-foreground">{title}</h2>
+        {meta ? <span className="shrink-0 text-[13px] text-muted-foreground">{meta}</span> : null}
       </header>
       {scroll ? (
         <div
@@ -68,21 +71,28 @@ export function Shell({
   );
 }
 
-export function Big({ children, unit }: { children: ReactNode; unit?: string }) {
+/** The one number a tile is about. Money arrives already rounded; the exact value can go in `title`. */
+export function Big({ children, unit, title }: { children: ReactNode; unit?: string; title?: string }) {
   return (
-    <p className="font-mono text-[28px] leading-none font-normal tracking-tight text-foreground tabular-nums @[240px]:text-[30px]">
+    <p title={title} className="text-4xl leading-tight font-semibold tracking-tight text-foreground tabular-nums @[360px]:text-[2.5rem]">
       {children}
-      {unit ? <span className="text-[13px] tracking-normal text-muted-foreground"> {unit}</span> : null}
+      {unit ? <span className="text-[15px] font-normal tracking-normal text-muted-foreground"> {unit}</span> : null}
     </p>
   );
 }
 
-/** A change against the previous period, said in words as well as an arrow. */
+/** "+3.2%" / "-0.4 pts" as words: "up 3.2%" / "down 0.4 pts". */
+export function plainChange(text: string, arrow: "up" | "down" | "flat"): string {
+  if (arrow === "flat" || text === "—") return text === "—" ? "No comparison yet" : "No change";
+  return `${arrow === "up" ? "Up" : "Down"} ${text.replace(/^[+-]/, "")}`;
+}
+
+/** A change against the previous period, said in words, with a coloured arrow. */
 export function Delta({
   text,
   arrow,
   outcome,
-  against = "compared with previous period",
+  against = "vs last period",
 }: {
   text: string;
   arrow: "up" | "down" | "flat";
@@ -90,14 +100,16 @@ export function Delta({
   against?: string;
 }) {
   const tone: Tone = outcome === "better" ? "ok" : outcome === "worse" ? "err" : "idle";
+  const Arrow = arrow === "up" ? ArrowUp : arrow === "down" ? ArrowDown : ArrowRight;
+  const none = text === "—";
   return (
-    <span className={`font-mono text-[13px] tabular-nums ${TEXT[tone]}`}>
-      <span aria-hidden="true">{arrow === "up" ? "↑" : arrow === "down" ? "↓" : "→"} </span>
-      {text}
-      <span className="sr-only">
-        {" "}
-        {against} ({outcome === "flat" ? "unchanged" : outcome})
+    <span className={`inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[15px] font-medium tabular-nums ${CHIP[tone]}`}>
+      <Arrow aria-hidden="true" className="size-4 shrink-0" strokeWidth={2.5} />
+      <span>
+        {plainChange(text, arrow)}
+        {none ? "" : ` ${against}`}
       </span>
+      {none ? null : <span className="sr-only"> ({outcome === "flat" ? "unchanged" : outcome})</span>}
     </span>
   );
 }
@@ -113,10 +125,29 @@ export function Dot({ tone }: { tone: Tone }) {
 /** Label on the left, value on the right, one quiet line. */
 export function Row({ children, value, className = "" }: { children: ReactNode; value: ReactNode; className?: string }) {
   return (
-    <div className={`flex items-center gap-2 text-[13px] ${className}`}>
+    <div className={`flex items-center gap-2 text-[15px] ${className}`}>
       <dt className="flex min-w-0 items-center gap-2 truncate text-foreground">{children}</dt>
-      <dd className="ml-auto font-mono text-muted-foreground tabular-nums">{value}</dd>
+      <dd className="ml-auto text-muted-foreground tabular-nums">{value}</dd>
     </div>
+  );
+}
+
+/** A line of the last weeks as a tiny picture, for KPI tiles. Decorative: the numbers are in the tile. */
+export function Sparkline({ values, label, className = "" }: { values: (number | null)[]; label: string; className?: string }) {
+  const known = values.map((v, i) => (v === null ? null : ([i, v] as const))).filter((p) => p !== null);
+  if (known.length < 2) return null;
+  const min = Math.min(...known.map((p) => p[1]));
+  const max = Math.max(...known.map((p) => p[1]));
+  const span = max - min || 1;
+  const w = 100;
+  const h = 32;
+  const pts = known.map(([i, v]) => [(i / (values.length - 1)) * w, h - 3 - ((v - min) / span) * (h - 6)] as const);
+  const line = pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  return (
+    <svg role="img" aria-label={label} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className={`${className || "h-8"} w-full overflow-visible`}>
+      <polygon points={`0,${h} ${line} ${w},${h}`} className="fill-blue-500/10 dark:fill-blue-400/15" />
+      <polyline points={line} fill="none" strokeWidth={2} vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" className="stroke-blue-600 dark:stroke-blue-400" />
+    </svg>
   );
 }
 
@@ -134,7 +165,6 @@ export function BarChart({
   weeks,
   texts,
   label,
-  axis = false,
   ends = false,
   interactive = false,
   active = null,
@@ -145,8 +175,6 @@ export function BarChart({
   weeks?: string[];
   texts?: string[];
   label: string;
-  /** Show the highest and lowest value to the left of the bars. */
-  axis?: boolean;
   /** Show the first and last week under the bars. */
   ends?: boolean;
   interactive?: boolean;
@@ -161,18 +189,10 @@ export function BarChart({
   const height = (v: number | null) =>
     v === null ? 12 : max === min ? 60 : Math.max(12, 12 + 88 * ((v - baseline) / (max - baseline)));
   const highlighted = active ?? values.length - 1;
-  const maxText = texts?.[values.findIndex((v) => v === max)];
-  const minText = texts?.[values.findIndex((v) => v === min)];
 
   return (
     <div className={`relative flex min-h-0 flex-col gap-1.5 rounded-md has-[input:focus-visible]:ring-2 has-[input:focus-visible]:ring-ring has-[input:focus-visible]:ring-offset-2 has-[input:focus-visible]:ring-offset-card ${className}`}>
       <div className="flex min-h-0 flex-1 gap-2">
-        {axis && known.length > 0 ? (
-          <div aria-hidden="true" className="flex w-[4.5em] shrink-0 flex-col justify-between text-right font-mono text-[10px] text-muted-foreground tabular-nums">
-            <span>{maxText}</span>
-            <span>{minText}</span>
-          </div>
-        ) : null}
         <div
           role="img"
           aria-label={label}
@@ -186,12 +206,22 @@ export function BarChart({
               : undefined
           }
           onPointerLeave={interactive ? () => onActive?.(null) : undefined}
-          className="flex min-h-[48px] flex-1 items-end gap-[3px]"
+          className="relative flex min-h-[48px] flex-1 items-end gap-[3px]"
         >
+          {active !== null && weeks && texts ? (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute -top-1 z-10 w-max -translate-y-full rounded-lg bg-popover px-2.5 py-1.5 text-[13px] leading-snug text-popover-foreground shadow-md ring-1 ring-border"
+              style={{ left: `${Math.min(88, Math.max(12, ((active + 0.5) / values.length) * 100))}%`, transform: "translate(-50%, -100%)" }}
+            >
+              Week of {formatDate(weeks[active])}
+              <span className="block font-semibold tabular-nums">{texts[active]}</span>
+            </span>
+          ) : null}
           {values.map((v, i) => (
             <span
               key={i}
-              title={weeks && texts ? `Week of ${weeks[i]}: ${texts[i]}` : undefined}
+              title={weeks && texts ? `Week of ${formatDate(weeks[i])}: ${texts[i]}` : undefined}
               className={`flex-1 rounded-[3px] transition-[height] duration-500 motion-reduce:transition-none ${
                 i === highlighted ? ACCENT : "bg-foreground/15"
               }`}
@@ -201,9 +231,9 @@ export function BarChart({
         </div>
       </div>
       {ends && weeks && weeks.length > 1 ? (
-        <div aria-hidden="true" className={`flex justify-between font-mono text-[10px] text-muted-foreground ${axis ? "pl-[calc(4.5em+0.5rem)]" : ""}`}>
-          <span>{weeks[0]}</span>
-          <span>{weeks[weeks.length - 1]}</span>
+        <div aria-hidden="true" className="flex justify-between text-[13px] text-muted-foreground">
+          <span>{formatDate(weeks[0])}</span>
+          <span>{formatDate(weeks[weeks.length - 1])}</span>
         </div>
       ) : null}
       {interactive ? (
@@ -213,7 +243,7 @@ export function BarChart({
           max={Math.max(0, values.length - 1)}
           value={highlighted}
           aria-label="Inspect a week"
-          aria-valuetext={weeks && texts ? `Week of ${weeks[highlighted]}: ${texts[highlighted]}` : undefined}
+          aria-valuetext={weeks && texts ? `Week of ${formatDate(weeks[highlighted])}: ${texts[highlighted]}` : undefined}
           onChange={(e) => onActive?.(Number(e.target.value))}
           onFocus={() => onActive?.(values.length - 1)}
           onBlur={() => onActive?.(null)}

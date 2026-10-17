@@ -27,7 +27,7 @@ describe("restoreLayout", () => {
 
 /**
  * The grid component is used exactly as published, so its tiler is exercised through its source:
- * the layout functions are transpiled out of the file and run for the ROOT widget sizes.
+ * the layout functions are transpiled out of the file and run for the Biztective widget sizes.
  */
 function loadTiler() {
   const src = readFileSync(resolve(process.cwd(), "src/components/ui/draggable-widget-grid.tsx"), "utf8");

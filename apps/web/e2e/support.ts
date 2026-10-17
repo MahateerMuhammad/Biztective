@@ -61,8 +61,8 @@ export function generated(seed: number, scenario: string): Record<string, string
 }
 
 export async function upload(page: Page, files: Record<string, string>) {
-  await page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: "Data" }).click();
-  await page.getByRole("link", { name: "Upload dataset" }).click();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Data" }).click();
+  await page.getByRole("link", { name: "Upload data" }).click();
   for (const [kind, body] of Object.entries(files)) {
     await page.getByLabel(`${kind[0]!.toUpperCase()}${kind.slice(1)} (.csv)`).setInputFiles({
       name: `${kind}.csv`,

@@ -57,6 +57,8 @@ export interface DraggableWidgetGridProps {
 	editable?: boolean
 	/** Upper bound for the number of columns. */
 	maxColumns?: number
+	/** Lower bound for the number of columns (default 2). */
+	minColumns?: number
 	/** Target cell width in px; the column count is derived from it. */
 	cellSize?: number
 	/** Gap between widgets in px. */
@@ -653,6 +655,7 @@ export function DraggableWidgetGrid({
 	renderItem,
 	editable = true,
 	maxColumns = 4,
+	minColumns: minColumnsProp = 2,
 	cellSize = 215,
 	gap = 12,
 	radius = 24,
@@ -662,7 +665,7 @@ export function DraggableWidgetGrid({
 	const [items, setItems] = useState(() => initialItems ?? DEFAULT_ITEMS)
 	const grid = useRef(null as HTMLDivElement | null)
 	const hintId = useId()
-	const minColumns = Math.min(2, Math.max(1, maxColumns))
+	const minColumns = Math.min(minColumnsProp, Math.max(1, maxColumns))
 
 	const [metrics, setMetrics] = useState({ unit: 0, columns: 0 })
 	useIsoLayoutEffect(() => {

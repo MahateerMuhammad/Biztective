@@ -142,7 +142,7 @@ describe("ExecutionHistory", () => {
       />,
     );
     expect(screen.getByText(/Needs review/)).toBeTruthy();
-    expect(screen.getByText(/ROOT did not overwrite them/)).toBeTruthy();
+    expect(screen.getByText(/Biztective did not overwrite them/)).toBeTruthy();
     expect(screen.getByText("Rows changed: k-0001")).toBeTruthy();
   });
 });

@@ -95,17 +95,17 @@ export function LoginForm() {
 
   return (
     <AuthTabs
-      corner={<SunMoonThemeToggle storageKey="root-theme" size={36} duration={900} />}
+      corner={<SunMoonThemeToggle storageKey="biztective-theme" size={36} duration={900} />}
       aside={
         <>
           <Ripple />
-          <TechOrbitDisplay text="ROOT" caption="Find out why your numbers changed." orbits={ORBITS} />
+          <TechOrbitDisplay text="Biztective" caption="Find out why your numbers changed." orbits={ORBITS} />
         </>
       }
     >
       <AnimatedForm
         header="Welcome back"
-        subHeader="Sign in to ROOT"
+        subHeader="Sign in to Biztective"
         helper="Use the account provided for your business."
         fields={FIELDS}
         submitLabel="Sign in"
@@ -115,7 +115,7 @@ export function LoginForm() {
         onSubmit={(values) => void onSubmit(values)}
         footer={
           <p className="text-sm text-muted-foreground">
-            Forgot password? Ask whoever set up your ROOT account to reset it.
+            Forgot password? Ask whoever set up your Biztective account to reset it.
           </p>
         }
       />

@@ -7,6 +7,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { formatDateTime } from "@/lib/format";
 import { postJson } from "@/lib/api/client";
 import { ApiProblem, type Integration } from "@/lib/api/types";
 import { useHydrated } from "@/lib/use-hydrated";
@@ -51,7 +52,7 @@ export function ConnectSheet({ businessId, pending }: { businessId: string; pend
   }
 
   return (
-    <div className="grid gap-4 text-sm">
+    <div className="grid gap-4 text-[15px]">
       {!target ? (
         <form className="grid gap-2" onSubmit={bind} aria-label="Connect a Google Sheet">
           <Label htmlFor="spreadsheet">Google Sheets link or spreadsheet ID</Label>
@@ -74,18 +75,18 @@ export function ConnectSheet({ businessId, pending }: { businessId: string; pend
         <ol className="grid list-decimal gap-2 pl-5" aria-label="Prove you own the spreadsheet">
           {target.service_account_email ? (
             <li>
-              Share the spreadsheet with <span className="font-mono">{target.service_account_email}</span> as an Editor.
+              Share the spreadsheet with <span className="tabular-nums">{target.service_account_email}</span> as an Editor.
             </li>
           ) : null}
           <li>
-            Add a tab named <span className="font-mono">ROOT_VERIFY</span> and type{" "}
+            Add a tab named <span className="tabular-nums">ROOT_VERIFY</span> and type{" "}
             {bound ? (
-              <strong className="font-mono">{bound.verification_code}</strong>
+              <strong className="tabular-nums">{bound.verification_code}</strong>
             ) : (
               "the code you were shown when you connected"
             )}{" "}
             into cell A1. {bound ? "This code is shown only once." : "If you no longer have it, connect again."} It expires at{" "}
-            {target.verify_expires_at?.slice(0, 16).replace("T", " ") ?? "—"} UTC.
+            {formatDateTime(target.verify_expires_at)} UTC.
           </li>
           <li>
             <Button type="button" onClick={verify} disabled={busy}>

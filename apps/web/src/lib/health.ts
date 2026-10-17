@@ -5,7 +5,17 @@
  */
 
 import type { ComparisonRow, IncidentSummary, MetricValues, Restriction } from "@/lib/api/types";
-import { METRIC_LABELS, formatChange, formatCount, formatMetric, formatPercent } from "@/lib/format";
+import {
+  METRIC_LABELS,
+  formatChange,
+  formatCount,
+  formatDate,
+  formatDateTime,
+  formatMetric,
+  formatMoneyCompact,
+  formatMoneyWhole,
+  formatPercent,
+} from "@/lib/format";
 
 /** Headline metrics, and whether a rise is good news for the business. */
 export const KPIS: { key: string; up: "good" | "bad" }[] = [
@@ -30,6 +40,8 @@ export type Outcome = "better" | "worse" | "flat";
 export interface KpiView {
   label: string;
   value: string;
+  /** The same value for big tiles: money without cents. Equals `value` for counts and ratios. */
+  short: string;
   /** The change in words and signs ("+3.2%", "-0.4 pts"), or "—" when there is none. */
   change: string;
   arrow: "up" | "down" | "flat";
@@ -41,13 +53,13 @@ export interface IncidentView {
   id: string;
   rank: number;
   severity: IncidentSummary["severity"];
-  title: string;
-  now: string;
-  usual: string;
+  /** One plain sentence: "Discount rate in product “P0023” jumped to 35.0% (usually 1.5%)". */
+  sentence: string;
+  /** Severity as a word ("High"). */
+  severityLabel: string;
+  /** Estimated impact in compact units ("$19.2K") and exactly ("$19,213.40"). */
   impact: string;
-  /** Estimated impact relative to the largest shown incident, 0 to 1. */
-  impactShare: number;
-  since: string | null;
+  impactExact: string;
   href: string;
 }
 
@@ -56,8 +68,10 @@ export interface TrendSeries {
   label: string;
   /** Numeric values for the bars; a missing week is null. */
   values: (number | null)[];
-  /** The same values as display text, for the big number and the table. */
+  /** The same values as display text, for the table and tooltips (exact). */
   text: string[];
+  /** For the big number: money without cents. */
+  short: string[];
 }
 
 export interface HealthData {
@@ -71,6 +85,11 @@ export interface HealthData {
   /** The previous period's value of each headline metric, as display text (only when the API gives one). */
   previous: Record<string, string>;
   incidents: IncidentView[];
+  /** How many incidents the analysis found in all (the list above is capped). */
+  incidentsTotal: number;
+  incidentsHref: string;
+  /** "Jul 5, 2026": the last day the data covers. */
+  through: string;
   /** The last (up to 26) weeks, whole business: one series per headline and trend metric. */
   weekly: { weeks: string[]; series: Record<string, TrendSeries> } | null;
   segments: {
@@ -91,14 +110,17 @@ export interface HealthData {
   quality: {
     covers: string;
     uploaded: string;
+    uploadedExact: string;
     orderLines: string;
     status: string;
+    /** What is wrong, when something is. */
+    detail: string | null;
     clean: boolean;
     restrictions: string[];
     reportHref: string;
   };
   investigations: { id: string; date: string; status: string; statusKey: string; href: string }[];
-  /** The primary action for ROOT's investigation, when the page offers one. */
+  /** The primary action for Biztective's investigation, when the page offers one. */
   investigationAction: { kind: "link"; href: string; label: string } | { kind: "start" } | null;
   plans: { id: string; text: string; href: string }[];
   decisionsHref: string;
@@ -111,6 +133,9 @@ const num = (v: string | number | null | undefined): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
+const MONEY = new Set(["net_revenue", "aov", "gross_profit", "net_sales", "gross_sales", "discounts", "refunds"]);
+const money = (metric: string) => MONEY.has(metric);
+
 export function kpiView(row: ComparisonRow, metric: string, up: "good" | "bad", currency: string): KpiView {
   const change = row.change?.[metric];
   const delta = change?.abs === null || change?.abs === undefined ? null : Number(change.abs);
@@ -118,16 +143,39 @@ export function kpiView(row: ComparisonRow, metric: string, up: "good" | "bad", 
   return {
     label: METRIC_LABELS[metric] ?? metric,
     value: formatMetric(metric, row.current[metric], currency),
+    short: money(metric) ? formatMoneyWhole(row.current[metric], currency) : formatMetric(metric, row.current[metric], currency),
     change: formatChange(metric, change, currency),
     arrow: delta === null || delta === 0 ? "flat" : delta > 0 ? "up" : "down",
     outcome,
   };
 }
 
-export function incidentTitle(i: IncidentSummary): string {
+const SEVERITY_LABELS: Record<IncidentSummary["severity"], string> = { critical: "Critical", high: "High", medium: "Medium", low: "Low" };
+
+/** "Discount rate in product “P0023” jumped to 35.0% (usually 1.5%)": what changed, in one sentence. */
+export function incidentSentence(i: IncidentSummary, currency: string): string {
   const metric = METRIC_LABELS[i.metric] ?? i.metric;
-  return i.dimension === "overall" ? `${metric} across the business` : `${metric} in ${i.dimension} “${i.value}”`;
+  const where = i.dimension === "overall" ? `${metric} across the business` : `${metric} in ${i.dimension} “${i.value}”`;
+  const now = num(i.current_value);
+  const usual = num(i.baseline_median);
+  let verb = "changed to";
+  if (now !== null && usual !== null) {
+    const ratio = usual !== 0 ? now / usual : Infinity;
+    verb = now >= usual ? (ratio >= 2 ? "jumped to" : "rose to") : ratio <= 0.5 ? "dropped to" : "fell to";
+  }
+  return `${where} ${verb} ${formatMetric(i.metric, i.current_value, currency)} (usually ${formatMetric(i.metric, i.baseline_median, currency)})`;
 }
+
+const INVESTIGATION_STATUS: Record<string, string> = {
+  awaiting_human: "Needs your input",
+  completed: "Completed",
+  failed: "Couldn’t finish",
+  running: "In progress",
+  queued: "Waiting to start",
+};
+
+export const investigationStatus = (status: string): string =>
+  INVESTIGATION_STATUS[status] ?? status.replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase());
 
 export interface HealthInput {
   businessId: string;
@@ -157,18 +205,15 @@ export function buildHealth(input: HealthInput): HealthData {
   const analysing = !analysis || analysis.status === "queued" || analysis.status === "running";
   const points = input.weekly.slice(-26);
 
-  const shown = [...(analysis?.incidents ?? [])].sort((a, b) => a.rank - b.rank).slice(0, 8);
-  const largestImpact = Math.max(0, ...shown.map((i) => Math.abs(num(i.impact) ?? 0)));
+  const shown = [...(analysis?.incidents ?? [])].sort((a, b) => a.rank - b.rank).slice(0, 3);
   const incidents = shown.map((i) => ({
       id: i.id,
       rank: i.rank,
       severity: i.severity,
-      title: incidentTitle(i),
-      now: formatMetric(i.metric, i.current_value, currency),
-      usual: formatMetric(i.metric, i.baseline_median, currency),
-      impact: formatMetric("net_revenue", i.impact, currency),
-      impactShare: largestImpact > 0 ? Math.abs(num(i.impact) ?? 0) / largestImpact : 0,
-      since: i.onset_week,
+      severityLabel: SEVERITY_LABELS[i.severity],
+      sentence: incidentSentence(i, currency),
+      impact: formatMoneyCompact(i.impact, currency),
+      impactExact: formatMetric("net_revenue", i.impact, currency),
       href: `${base}/datasets/${dataset.id}/analytics#incident-${i.id}`,
     }));
 
@@ -189,7 +234,7 @@ export function buildHealth(input: HealthInput): HealthData {
         ? {
             kind: "link",
             href: `${base}/investigations/${open.id}`,
-            label: open.status === "awaiting_human" ? "Answer ROOT's question" : "Open the investigation",
+            label: open.status === "awaiting_human" ? "Answer Biztective's question" : "Open the investigation",
           }
         : input.canAct
           ? { kind: "start" }
@@ -216,6 +261,9 @@ export function buildHealth(input: HealthInput): HealthData {
         )
       : {},
     incidents,
+    incidentsTotal: analysis?.incidents.length ?? 0,
+    incidentsHref: `${base}/datasets/${dataset.id}/analytics`,
+    through: formatDate(dataset.date_max, true),
     weekly:
       points.length > 1
         ? {
@@ -228,6 +276,7 @@ export function buildHealth(input: HealthInput): HealthData {
                   label: METRIC_LABELS[m] ?? m,
                   values: points.map((p) => num(p.values[m])),
                   text: points.map((p) => formatMetric(m, p.values[m], currency)),
+                  short: points.map((p) => (money(m) ? formatMoneyWhole(p.values[m], currency) : formatMetric(m, p.values[m], currency))),
                 },
               ]),
             ),
@@ -245,32 +294,32 @@ export function buildHealth(input: HealthInput): HealthData {
             share: largest > 0 ? (num(s.share) ?? 0) / largest : 0,
             shareText: formatPercent(s.share),
             count: formatCount(s.customers),
-            revenue: formatMetric("net_revenue", s.monetary_365, currency),
+            revenue: formatMoneyWhole(s.monetary_365, currency),
           })),
         }
       : null,
     quality: {
-      covers: `${dataset.date_min} – ${dataset.date_max}`,
-      uploaded: dataset.created_at.slice(0, 16).replace("T", " "),
+      covers: `${formatDate(dataset.date_min)} – ${formatDate(dataset.date_max, true)}`,
+      uploaded: formatDate(dataset.created_at),
+      uploadedExact: formatDateTime(dataset.created_at),
       orderLines: formatCount(dataset.orders_rows),
-      status: clean ? "No issues found" : `${formatCount(errors)} rows rejected · ${formatCount(warnings)} warnings`,
+      status: clean ? "Data looks healthy" : "Data needs a look",
+      detail: clean ? null : `${formatCount(errors)} rows rejected, ${formatCount(warnings)} warnings`,
       clean,
       restrictions,
       reportHref: `${base}/datasets/${dataset.id}`,
     },
     investigations: input.investigations.map((i) => ({
       id: i.id,
-      date: i.created_at.slice(0, 10),
-      status: i.status.replaceAll("_", " "),
+      date: formatDate(i.created_at),
+      status: investigationStatus(i.status),
       statusKey: i.status,
       href: `${base}/investigations/${i.id}`,
     })),
     investigationAction: action,
     plans: input.plans.map((p) => ({
       id: p.id,
-      text: `${p.created_at.slice(0, 10)} · ${p.status.replaceAll("_", " ")}${
-        p.execution_status ? ` · execution ${p.execution_status.replaceAll("_", " ")}` : ""
-      }`,
+      text: `${formatDate(p.created_at)} · ${investigationStatus(p.status)}`,
       href: `${base}/recovery-plans/${p.id}`,
     })),
     decisionsHref: `${base}/decisions`,

@@ -23,16 +23,16 @@ export function StrategyChart({ bars, currency }: { bars: StrategyBar[]; currenc
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={bars} layout="vertical" margin={{ top: 4, right: 16, bottom: 4, left: 8 }}>
             <CartesianGrid stroke="var(--border)" horizontal={false} />
-            <XAxis type="number" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v: number) => formatMoney(v, currency)} />
-            <YAxis type="category" dataKey="name" width={170} tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
+            <XAxis type="number" tick={{ fontSize: 13 }} stroke="var(--muted-foreground)" tickFormatter={(v: number) => formatMoney(v, currency)} />
+            <YAxis type="category" dataKey="name" width={170} tick={{ fontSize: 13 }} stroke="var(--muted-foreground)" />
             <Tooltip formatter={(v, n) => [formatMoney(Number(v), currency), String(n)]} />
-            <Legend wrapperStyle={{ fontSize: 12 }} />
+            <Legend wrapperStyle={{ fontSize: 13 }} />
             <Bar dataKey="benefit" name="Benefit (mid)" fill="var(--action-foreground)" isAnimationActive={false} />
             <Bar dataKey="cost" name="Cost (mid)" fill="var(--hypothesis-foreground)" isAnimationActive={false} />
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <figcaption className="text-xs text-muted-foreground">{summary}</figcaption>
+      <figcaption className="text-[13px] text-muted-foreground">{summary}</figcaption>
     </figure>
   );
 }

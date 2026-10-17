@@ -4,8 +4,10 @@ import { notFound } from "next/navigation";
 
 import { AutoRefresh } from "@/components/auto-refresh";
 import { HealthGrid } from "@/components/health/health-grid";
-import { KindBadge } from "@/components/kind-badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Database } from "lucide-react";
+
+import { EmptyState, PageHeader, SectionCard } from "@/components/page";
+import { buttonVariants } from "@/components/ui/button";
 import {
   getAnalysis,
   getBusiness,
@@ -38,31 +40,26 @@ export default async function BusinessHealthPage({ params }: PageProps<"/busines
     return (
       <div className="grid gap-6">
         {processing ? <AutoRefresh intervalMs={3000} /> : null}
-        <h1 className="text-2xl font-semibold tracking-tight">Business health</h1>
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              <h2 className="text-base font-semibold">{processing ? "Your data is being checked" : "Start with your sales data"}</h2>
-            </CardTitle>
-            <CardDescription>
-              {processing
-                ? `Dataset v${processing.version} is ${processing.status.replaceAll("_", " ")}. This page updates by itself.`
-                : "ROOT needs orders, products, customers and returns (CSV) to measure your business and find what changed."}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="text-sm">
-            {canAct ? (
-              <Link
-                href={`/businesses/${businessId}/datasets/new`}
-                className="inline-flex rounded-lg bg-primary px-3 py-2 font-medium text-primary-foreground hover:bg-primary/80"
-              >
-                Upload dataset
-              </Link>
-            ) : (
-              <p className="text-muted-foreground">An owner or analyst can upload data.</p>
-            )}
-          </CardContent>
-        </Card>
+        <PageHeader title="Business health" />
+        <SectionCard>
+          <EmptyState
+            icon={Database}
+            title={processing ? "Your data is being checked" : "Start with your sales data"}
+            action={
+              !processing && canAct ? (
+                <Link href={`/businesses/${businessId}/datasets/new`} className={buttonVariants()}>
+                  Upload data
+                </Link>
+              ) : null
+            }
+          >
+            {processing
+              ? "This page updates by itself when the check finishes."
+              : canAct
+                ? "Biztective needs orders, products, customers and returns (CSV) to measure your business and find what changed."
+                : "An owner or analyst can upload data."}
+          </EmptyState>
+        </SectionCard>
       </div>
     );
   }
@@ -93,22 +90,12 @@ export default async function BusinessHealthPage({ params }: PageProps<"/busines
   });
 
   return (
-    <div className="grid gap-5">
+    <>
       {health.analysing ? <AutoRefresh intervalMs={3000} /> : null}
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Business health</h1>
-          <p className="mt-1 text-sm text-muted-foreground" role="status" aria-live="polite">
-            {health.analysing
-              ? "Analysing your latest data…"
-              : `Data through ${ready.date_max ?? "—"} · analysed as of ${analysis?.as_of ?? "—"} · dataset v${ready.version}`}
-          </p>
-        </div>
-        <p className="flex items-center gap-2 text-xs text-muted-foreground">
-          <KindBadge kind="fact" /> Every number on this page is measured from your uploaded records.
-        </p>
-      </div>
-      <HealthGrid data={health} />
-    </div>
+      <HealthGrid
+        data={health}
+        subtitle={health.analysing ? "Analysing your latest data…" : `Updated through ${health.through}`}
+      />
+    </>
   );
 }

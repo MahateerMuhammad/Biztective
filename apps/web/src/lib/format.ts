@@ -3,11 +3,48 @@
  * is presentation (2 dp money, 1 dp percentages) and never feeds back into calculations.
  */
 
-export function formatMoney(value: string | number | null | undefined, currency: string): string {
+export function formatMoney(value: string | number | null | undefined, currency: string, digits = 2): string {
   if (value === null || value === undefined) return "—";
   const number = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(number)) return "—";
-  return new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 2 }).format(number);
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(number);
+}
+
+/** Money for big tiles: no cents, with thousands separators ($563,378). */
+export function formatMoneyWhole(value: string | number | null | undefined, currency: string): string {
+  return formatMoney(value, currency, 0);
+}
+
+/** Money in compact units ($19.2K); the exact value goes in a tooltip. */
+export function formatMoneyCompact(value: string | number | null | undefined, currency: string): string {
+  if (value === null || value === undefined) return "—";
+  const number = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(number)) return "—";
+  return new Intl.NumberFormat("en-US", { style: "currency", currency, notation: "compact", maximumFractionDigits: 1 }).format(number);
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** "2026-10-16" (or a full ISO timestamp) as "Oct 16"; with `year`, "Oct 16, 2026". Pure string work, so server and browser agree. */
+export function formatDate(iso: string | null | undefined, year = false): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso ?? "");
+  if (!m) return "—";
+  const month = MONTHS[Number(m[2]) - 1];
+  if (!month) return "—";
+  return `${month} ${Number(m[3])}${year ? `, ${m[1]}` : ""}`;
+}
+
+/** "Oct 16, 9:18 PM" (UTC, like the stored timestamps). */
+export function formatDateTime(iso: string | null | undefined): string {
+  const m = /^\d{4}-\d{2}-\d{2}T(\d{2}):(\d{2})/.exec(iso ?? "");
+  if (!m) return formatDate(iso);
+  const hour = Number(m[1]);
+  return `${formatDate(iso)}, ${hour % 12 === 0 ? 12 : hour % 12}:${m[2]} ${hour < 12 ? "AM" : "PM"}`;
 }
 
 export function formatPercent(value: string | number | null | undefined): string {

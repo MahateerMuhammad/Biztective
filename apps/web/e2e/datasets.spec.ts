@@ -28,9 +28,9 @@ async function signIn(page: Page) {
 }
 
 async function uploadFiles(page: Page, content: Record<string, string>) {
-  await page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: "Data" }).click();
-  await page.getByRole("link", { name: "Upload dataset" }).click();
-  await expect(page.getByRole("heading", { name: "Upload dataset" })).toBeVisible();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Data" }).click();
+  await page.getByRole("link", { name: "Upload data" }).click();
+  await expect(page.getByRole("heading", { name: "Upload data" })).toBeVisible();
   for (const [kind, body] of Object.entries(content)) {
     const label = `${kind[0]!.toUpperCase()}${kind.slice(1)} (.csv)`;
     await page.getByLabel(label).setInputFiles({

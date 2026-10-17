@@ -25,7 +25,7 @@ const KINDS = {
   },
   action: {
     label: "Action",
-    title: "Something that changes things outside ROOT",
+    title: "Something that changes things outside Biztective",
     className: "border-action-foreground/20 bg-action text-action-foreground",
   },
 } as const;

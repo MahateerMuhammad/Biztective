@@ -26,7 +26,7 @@ const FIELD_LABELS: Record<string, string> = {
   conflicts: "Conflicts with data",
 };
 
-/** What one human answer changed in ROOT's interpretation (a pure diff of stored versions). */
+/** What one human answer changed in Biztective's interpretation (a pure diff of stored versions). */
 export function VersionDiff({ comparison }: { comparison: VersionComparison }) {
   const changed = comparison.incidents.filter(
     (i) =>
@@ -79,7 +79,7 @@ export function VersionDiff({ comparison }: { comparison: VersionComparison }) {
         <ul className="grid gap-4" aria-label="Changes per incident">
           {changed.map((incident) => (
             <li key={incident.key} className="grid gap-2 rounded-md border p-3 text-sm">
-              <p className="font-mono text-xs">{incident.key}</p>
+              <p className="tabular-nums text-[13px]">{incident.key}</p>
               {incident.root_cause ? (
                 <p>
                   Root cause changed: <strong>{templateLabel(incident.root_cause.from)}</strong> →{" "}

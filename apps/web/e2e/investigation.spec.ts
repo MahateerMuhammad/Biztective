@@ -43,8 +43,8 @@ test("a human answer revises the investigation while the measurements stay intac
   test.setTimeout(180_000);
   const files = generated();
   await signIn(page);
-  await page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: "Data" }).click();
-  await page.getByRole("link", { name: "Upload dataset" }).click();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Data" }).click();
+  await page.getByRole("link", { name: "Upload data" }).click();
   for (const [kind, body] of Object.entries(files)) {
     await page.getByLabel(`${kind[0]!.toUpperCase()}${kind.slice(1)} (.csv)`).setInputFiles({
       name: `${kind}.csv`,
@@ -60,13 +60,13 @@ test("a human answer revises the investigation while the measurements stay intac
   await expect(page).toHaveURL(/\/investigations\/[0-9a-f-]{36}$/);
 
   // The investigation pauses durably with one question; the page refreshes until then.
-  await expect(page.getByRole("heading", { name: "ROOT needs your input" })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("heading", { name: "Biztective needs your input" })).toBeVisible({ timeout: 60_000 });
   await expect(page.getByRole("status").first()).toContainText("Waiting for your answer · version 1");
   await expect(page.getByText("Was the higher discounting in the period planned")).toBeVisible();
   const firstMeasurements = await page.getByRole("list", { name: "Measured facts" }).first().innerText();
 
   await page.getByLabel("Yes, it was a planned clearance or promotion campaign").check();
-  await page.getByLabel(/Anything else ROOT should know/).fill("Spring clearance of last season's mats.");
+  await page.getByLabel(/Anything else Biztective should know/).fill("Spring clearance of last season's mats.");
   await page.getByRole("button", { name: "Send answer" }).click();
 
   await expect(page.getByRole("status").first()).toContainText("version 2", { timeout: 60_000 });

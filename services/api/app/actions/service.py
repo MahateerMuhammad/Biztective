@@ -184,7 +184,7 @@ async def request_execution(
         raise ApiError(
             409,
             "nothing_to_execute",
-            "No selected strategy has an action that ROOT can carry out.",
+            "No selected strategy has an action that Biztective can carry out.",
         ) from exc
     except payloads.TooManyRowsError as exc:
         raise ApiError(
