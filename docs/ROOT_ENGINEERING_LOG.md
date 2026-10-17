@@ -1561,5 +1561,5 @@ The tested implemented path is upload → analyze/detect → investigate → cla
   - Global 300/min session limiter is in-process per the single-instance architecture (SEC-20).
   - Live LLM provider calls were not executed in this session (opt-in under AMD-13).
   - Features deferred by earlier amendments (data overlays/corrections, hypothesis rejection/findings-review loops, sequence-scrubbing replay, Slack, self-registration/membership UI, retention/deletion sweeps, and Phase 11 production deployment) remain out of scope for Phase 10.
-- **Commit hash and GitHub push status:** recorded in the follow-up bookkeeping commit immediately after the Phase 10 commit and verified with `git ls-remote origin refs/heads/main`.
+- **Commit hash and GitHub push status:** `6b1b48d723b148860bacbd879bc656857d9fad9b`, pushed to `main` without force; `git ls-remote origin refs/heads/main` matched `git rev-parse HEAD` (filled in by the follow-up bookkeeping commit per R-4).
 - **Next-phase dependencies:** Phase 11 (deployment and demo readiness). Not started in this session.
