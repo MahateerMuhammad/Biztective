@@ -1563,3 +1563,63 @@ The tested implemented path is upload → analyze/detect → investigate → cla
   - Features deferred by earlier amendments (data overlays/corrections, hypothesis rejection/findings-review loops, sequence-scrubbing replay, Slack, self-registration/membership UI, retention/deletion sweeps, and Phase 11 production deployment) remain out of scope for Phase 10.
 - **Commit hash and GitHub push status:** `6b1b48d723b148860bacbd879bc656857d9fad9b`, pushed to `main` without force; `git ls-remote origin refs/heads/main` matched `git rev-parse HEAD` (filled in by the follow-up bookkeeping commit per R-4).
 - **Next-phase dependencies:** Phase 11 (deployment and demo readiness). Not started in this session.
+## Phase 11 — Production Deployment on Alternate Futures
+
+- **Date:** 2026-10-17
+- **Phase number and name:** Phase 11 — Production Deployment on Alternate Futures (`Alternate Clouds`)
+
+### 1. Pre-deployment repository audit summary
+
+- **Backend (`services/api/`):** FastAPI `0.135.3`, Pydantic `2.13.0`, SQLAlchemy `2.0.49` + `psycopg` `3.3.3`, Alembic `1.18.4`, LangGraph `1.1.6` + `langgraph-checkpoint-postgres` `3.0.5`, Uvicorn `0.44.0`, pinned in `services/api/uv.lock`. Requires a single worker process (`--workers 1`) so the embedded PostgreSQL job worker (`WORKER_ENABLED=true`) and in-process `SEC-20` authenticated session token bucket (`300 req/min`) operate without multi-process split-brain.
+- **Frontend (`apps/web/`):** Next.js `16.4.2` (App Router, `output: "standalone"`), React `19.3.1`, TypeScript `5.9.3`, Node 24 LTS. Prior to Phase 11, `/api/v1/:path*` rewrites were evaluated only at `next build` time in `apps/web/next.config.ts`; Phase 11 added request-time `/api/v1/:path*` rewriting in `apps/web/src/proxy.ts` (`AMD-22`) so `BACKEND_URL` is resolved dynamically from container runtime environment variables while preserving per-request CSP nonces and first-party `__Host-root_session` / `__Host-root_csrf` cookies.
+
+### 2. Alternate Futures architecture and deployment method
+
+- **Platform & CLI:** Alternate Futures (`Alternate Clouds`, `https://clouds.alternatefutures.ai`) managed via `@alternatefutures/acc` CLI `1.10.0` (`acc`), deploying OCI containers on Akash compute behind Alternate Futures managed HTTPS ingress (`https://<slug>-app.alternatefutures.ai`).
+- **Organization & Project:** Organization `u3VLoOrBKeXnLUvVyDpAt`, Project `root-2` (`cmvbvc76110gwbs1uxtk23lhr`).
+- **Services deployed:**
+  - **Backend (`root-api`):** Service ID `cmvbwfap014pibs1u7pxz2e5k`, Deployment ID `97a9f401-d862-4283-be9f-d3893ad2378f`, DSEQ `29100292`, public HTTPS endpoint `https://root-api-app.alternatefutures.ai` (container port `8000`, `1 vCPU`, `1 GiB RAM`, `2 GiB storage`).
+  - **Frontend (`root-web`):** Service ID `cmvbx1b1016uebs1u7l6ge6p7`, Deployment ID `19265f83-5d1e-40d2-98a7-2f4dcce4a108`, DSEQ `29100447`, public HTTPS endpoint `https://root-web-app.alternatefutures.ai` (container port `3000`, `1 vCPU`, `1 GiB RAM`, `1 GiB storage`).
+
+### 3. Container configuration and optimization details
+
+- **Backend (`services/api/Dockerfile`, `services/api/.dockerignore`, `services/api/docker-entrypoint.sh`):**
+  - Multi-stage build on `python:3.13-slim-bookworm` using `uv 0.11.7` and `uv sync --frozen --no-dev --no-editable` into `/opt/venv`.
+  - Runs as non-root user `rootapp` (`UID 10001`, `GID 10001`), `EXPOSE 8000`, Docker `HEALTHCHECK` probing `/api/v1/healthz`, and `docker-entrypoint.sh` enforcing required environment variables, running `alembic upgrade head` via `DATABASE_URL_MIGRATIONS`, optional `seed-demo`, and `exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1 --proxy-headers --forwarded-allow-ips="*"`.
+- **Frontend (`apps/web/Dockerfile`, `apps/web/.dockerignore`):**
+  - Multi-stage build on `node:24.14.1-alpine3.21` (`deps` → `build` → `runtime`) using Next.js `output: "standalone"`.
+  - Runs as non-root user `rootapp` (`UID 10001`, `GID 10001`), `EXPOSE 3000`, Docker `HEALTHCHECK` probing `/login`, and `CMD ["node", "server.js"]`.
+- **Published OCI images (`ttl.sh` via `.github/workflows/deploy-images.yml`):**
+  - `ttl.sh/root2-mahateer-api-1.0.0:24h` (`@sha256:982dd4a1498825db6e36d7e143ee5e36eb4f229ff6d9f67c3e2ad4fe43c831ca`), `ttl.sh/root2-mahateer-api-1.0.1:24h`, `ttl.sh/root2-mahateer-api-1.0.2:24h`
+  - `ttl.sh/root2-mahateer-web-1.0.0:24h`, `ttl.sh/root2-mahateer-web-1.0.1:24h` (`@sha256:4fc4c10e7df284c047fc3e906db9a58511857d7d96c60e1aeaa4bf734bf1ef1b`), `ttl.sh/root2-mahateer-web-1.0.2:24h`
+
+### 4. Environment variable inventory (names only, no secret values)
+
+- **Backend (`root-api` via `acc services env`):** `ENVIRONMENT` (`production`), `PORT` (`8000`), `DATABASE_URL` (least-privilege `root_app` role with `sslmode=require`), `DATABASE_URL_MIGRATIONS` (owner `postgres` role with `sslmode=require`), `RUN_MIGRATIONS` (`1`), `SEED_DEMO_ON_START` (`0`), `SESSION_SECRET`, `FRONTEND_ORIGIN` (`https://root-web-app.alternatefutures.ai`), `WORKER_ENABLED` (`true`), `LLM_PROVIDER` (`disabled`), `SHEETS_BRIDGE_URL`, `SHEETS_BRIDGE_TOKEN`.
+- **Frontend (`root-web` via `acc services env`):** `NODE_ENV` (`production`), `PORT` (`3000`), `HOSTNAME` (`0.0.0.0`), `BACKEND_URL` (`https://root-api-app.alternatefutures.ai`), `NEXT_TELEMETRY_DISABLED` (`1`).
+
+### 5. Database and LangGraph persistence configuration
+
+- **Managed PostgreSQL:** Supabase PostgreSQL (`aws-0-ap-southeast-2.pooler.supabase.com:5432/postgres?sslmode=require`) at Alembic revision `0007` (head).
+- **RLS & Least-Privilege Runtime Role (`AMD-3`):** Connected runtime user `root_app` verified with `rolsuper = false`, `rolbypassrls = false`, `owned_tables = 0`, and `FORCE/ENABLE ROW LEVEL SECURITY` active across all 22 tenant tables. `/api/v1/readyz` continuously asserts these invariants in production (`{"status":"ready"}`).
+- **Durable LangGraph Checkpointer:** `AsyncPostgresSaver` tables (`langgraph.checkpoints`, `langgraph.checkpoint_blobs`, `langgraph.checkpoint_writes`, `langgraph.checkpoint_migrations`) verified present and granted to `root_app`.
+- **Seeded Production Demo Account:** Seeded `demo.owner@root-demo.test` (`Northstar Apparel`, Business ID `01a14819-3896-7762-9c7b-d7d18c1e5bc8`) via `python -m scripts.seed_demo`.
+
+### 6. Security, health, observability, and live verification results
+
+| Check | Command / Target | Actual Result |
+|---|---|---|
+| Container non-root (`UID 10001`) | `docker run --rm --entrypoint id <image> -u` (in `.github/workflows/deploy-images.yml`) | **Passed** (`10001` for both `api` and `web`) |
+| No embedded `.env` secrets in images | `test ! -f /app/.env && test ! -f /app/.env.live && test ! -f /app/.env.supabase` | **Passed** |
+| Fail-closed on missing required env vars | `docker run --rm ttl.sh/root2-mahateer-api-1.0.0:24h` without `DATABASE_URL` | **Passed** (exits non-zero immediately) |
+| Live backend liveness & readiness | `GET https://root-api-app.alternatefutures.ai/api/v1/healthz` & `/api/v1/readyz` | **Passed** (`200 {"status":"ok"}` and `200 {"status":"ready"}`) |
+| Live frontend HTTPS & same-origin proxy | `GET https://root-web-app.alternatefutures.ai/login` & `/api/v1/readyz` | **Passed** (`200` on `/login` with CSP nonce, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`; `200 {"status":"ready"}` on proxied `/api/v1/readyz`) |
+| Live production login & `__Host-` cookies | Playwright Chromium `signIn()` against `https://root-web-app.alternatefutures.ai/login` | **Passed** (`__Host-root_csrf` and `__Host-root_session` issued over HTTPS, redirected to `/businesses/01a14819-3896-7762-9c7b-d7d18c1e5bc8`) |
+| Structured production container logs | `acc services logs cmvbwfap014pibs1u7pxz2e5k` | **Passed** (structured JSON startup, migration `0007 (head)`, `app.startup`, `worker.started`, and request logs with zero secret leakage) |
+| Operational & redeployment documentation | `docs/DEPLOYMENT_GUIDE.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY_MODEL.md`, `docs/TEST_STRATEGY.md`, `AMD-22` | **Completed** |
+
+### 7. Known limitations and operational risks
+
+- **Ephemeral OCI registry (`ttl.sh`):** Images pushed to `ttl.sh` expire after 24 hours; before a container restart or redeploy more than 24 hours later, re-run `.github/workflows/deploy-images.yml` (or push a bumped tag as documented in `docs/DEPLOYMENT_GUIDE.md`).
+- **Alternate Futures image tag caching:** Alternate Clouds caches image tags on provider nodes and rejects `:latest` / `:main`; every code update must bump the version tag (e.g., `1.0.2:24h` → `1.0.3:24h`).
+- **Commit hash and GitHub push status:** Pending final commit of `docs/DEPLOYMENT_GUIDE.md` and `docs/ROOT_ENGINEERING_LOG.md`.
