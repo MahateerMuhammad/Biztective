@@ -295,7 +295,7 @@ async def test_approved_plan_binds_the_exact_version_and_hash(
     history = [(d["decision"], d["version"], d["outcome"]) for d in approved["decisions"]]
     assert history == [("request_changes", 1, "applied"), ("approve", 2, "applied")]
     # Approval records a decision; nothing is executed or scheduled outside the database.
-    assert approved["execution"] == {"available": False}
+    assert approved["execution"] == {"integration_ready": False, "actions": []}
     assert counts(owner_engine, proposed["id"])["other_jobs"] == 0
     assert no_network == []
     with owner_engine.connect() as conn:

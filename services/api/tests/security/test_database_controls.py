@@ -39,6 +39,9 @@ TENANT_TABLES = (
     "recovery_plans",
     "recovery_plan_versions",
     "plan_decisions",
+    "integrations",
+    "plan_actions",
+    "action_executions",
 )
 
 
@@ -164,6 +167,18 @@ def test_audit_insert_for_foreign_business_is_rejected(
         "UPDATE recovery_plans SET investigation_id = gen_random_uuid()",
         "UPDATE recovery_plans SET created_by = gen_random_uuid()",
         "DELETE FROM recovery_plans",
+        "UPDATE plan_actions SET payload = '{}'",
+        "UPDATE plan_actions SET payload_hash = repeat('0', 64)",
+        "UPDATE plan_actions SET destination = '{}'",
+        "UPDATE plan_actions SET integration_id = gen_random_uuid()",
+        "UPDATE plan_actions SET requested_by = gen_random_uuid()",
+        "DELETE FROM plan_actions",
+        "UPDATE action_executions SET attempt = 9",
+        "UPDATE action_executions SET started_at = now()",
+        "DELETE FROM action_executions",
+        "UPDATE integrations SET spreadsheet_id = 'x'",
+        "UPDATE integrations SET business_id = gen_random_uuid()",
+        "DELETE FROM integrations",
         "UPDATE hypothesis_evaluations SET interpretation = 'intended'",
         "UPDATE investigation_events SET actor_user_id = gen_random_uuid()",
         "UPDATE findings SET content = '{}'",

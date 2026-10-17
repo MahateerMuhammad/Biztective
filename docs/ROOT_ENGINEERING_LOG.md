@@ -1249,5 +1249,84 @@ Every Phase 6 objective listed above is implemented and covered by the tests in 
   - No executor or integration exists yet: approval only records a decision.
   - Remote CI status for `a3a62a9` is unknown, and it most likely failed lint.
 - **Acceptance criteria status:** The AMD-17 scope is implemented and covered by the recovery test suites listed above. It is complete after the lint fix in this follow-up, apart from the open intermittent test.
-- **Commit hash and GitHub push status:** Appended below after commit.
+- **Commit hash and GitHub push status:** `ed98cbd86bed83adb4d5096db7e8a1c21a6e2e64`, pushed to `main`; `git ls-remote origin refs/heads/main` matched `git rev-parse HEAD`. (Pending field filled in by Phase 8, as R-4 allows.)
 - **Next-phase dependencies:** Phase 8 (baseline 11: integrations and execution) builds on approved plan versions and their `content_hash`. Do not begin it in this session.
+
+## Phase 8 — Executing approved plans in Google Sheets
+
+- **Date:** 2026-10-17
+- **Objective and scope:** Per AMD-18 (baseline Phase 11, Google Sheets only). An owner executes an approved plan version; ROOT writes its review tasks and customer-service queue rows to the business's own verified spreadsheet, reads them back to verify them, and records every attempt. Slack (optional in the brief) is **not delivered**. Nothing contacts customers.
+- **Pre-flight:** Phase 7 was complete apart from one intermittent test (see the Phase 7 entry). AMD-17 names a DATA_CONTRACTS §14 that was never written and left no "Amended by AMD-17" notes in the contract documents; this phase does not repair that gap, it only records it.
+- **External action flow:**
+  1. The owner binds a spreadsheet (`POST …/integrations/google-sheets`) and receives a one-time code. Only its SHA-256 is stored; it is valid 30 minutes. The owner shares the sheet with the service account and types the code into `ROOT_VERIFY!A1`. `…/verify` reads the cell and compares in constant time.
+  2. After approval, the owner calls `POST …/recovery-plans/{pid}/actions {version, content_hash}`. The server re-checks everything, then builds the payload from the approved, hashed version content only: no LLM text, no client field, no destination from the request. It stores the intent (`plan_actions`, status `pending`) and enqueues `execute_action` in the same transaction.
+  3. The executor job takes a lease, re-authorizes, and records and **commits** the attempt row before the first Google call. It then reads tab metadata and rows (creating missing tabs and headers, refusing a foreign header) and appends only the rows whose key is absent (`RAW`, `INSERT_ROWS`, one batched append per tab). Authorization is re-checked before every write.
+  4. When every row is confirmed, the status becomes `succeeded` (with the updated ranges). A read-back then compares each row cell by cell: `verified`, or `manual_review` with missing, duplicated, mismatched or unexpected keys.
+- **Authorization checks (request time and before every write):** plan `approved`; `approved_version` = action version = current version; stored content hash = action hash = applied approval's hash; approver and requester are still owners (membership re-read under their own RLS context); integration still `verified` and the same spreadsheet; business matches. A failed check means `failed` with a code (`approval_no_longer_valid`, `approver_not_owner`, `integration_not_verified`, …), `action.refused` is audited, and no Google call is made. Permissions: `action:execute` and `action:retry` (owner), `integration:manage` (owner), `integration:read` (owner, analyst).
+- **Idempotency behaviour:**
+  - The action ID is `uuid5(plan, version, content_hash, kind)`, so repeated clicks, request replays (`Idempotency-Key`) and concurrent requests all resolve to one row (primary key, plan row locked) and one job (dedupe key).
+  - A lease with an owner (the job ID) stops a second worker (`action_busy`, retried later) and lets the same job take over after its worker dies.
+  - Rows carry keys `<action hex>-<n>`, unique across tabs. Every write is preceded by a read, so a write whose outcome is unknown (timeout, reset, 5xx after send) is never repeated blindly.
+  - **Guarantee:** effectively once per key while only ROOT writes the key column. It is **not** universal exactly-once, because the Sheets API has no idempotency token: a person deleting or editing rows between attempts can cause a re-append or a mismatch. Mismatches go to `manual_review` and are never overwritten.
+- **Provider interactions:**
+  - **Token:** `google-auth` signs the JWT. `POST https://oauth2.googleapis.com/token` (the key file's own `token_uri` is ignored). The token is cached until 5 minutes before expiry; a 401 refreshes it once.
+  - **Sheets:** `GET spreadsheet?fields=sheets.properties.title`, `:batchUpdate addSheet`, `values:batchUpdate` (headers), `values:batchGet` (`UNFORMATTED_VALUE`) and `values/{range}:append`.
+  - **Limits:** 20 s timeout; up to 4 retries per call with exponential backoff (1, 2, 4, …, capped at 60 s), honouring `Retry-After`; 3 write rounds per job run; at most 3 job runs; then the action ends `failed` (no row write ever sent) or `manual_review`.
+  - **Typical successful run:** 1 token request, 1 metadata, up to 2 setup calls for new tabs, 1 read, 1 append per tab and 1 read-back. Each attempt stores its calls (operation, status, duration) without cell contents.
+- **Security:**
+  - Formula injection: cells starting with `= + - @ \t \r` are prefixed with `'`, cells are capped at 5,000 characters, writes use `RAW`, and there are at most 5,000 rows per action.
+  - Credentials: `GOOGLE_SERVICE_ACCOUNT_JSON` lives only in backend settings; it is never in responses, logs, the frontend or LLM inputs (tested with sentinels).
+  - Isolation: a spreadsheet binds to one business (a unique index over verified bindings, so a pending binding cannot squat; 409 `integration_already_bound` without naming the other tenant).
+  - The new tables have RLS and column-level grants; the action binding is immutable and attempts are append-only (triggers, tested).
+- **Files:**
+  - Backend: `app/actions/` (sheets, payload, service, executor, router), migration `0007_action_execution`, models, `RetryableJobError` in the worker, settings, permissions, the plan detail `execution` block, `.env.example`.
+  - Tests: `tests/actions/` (fake Google, execution, integrations, adapter, live smoke); T-16/T-18 tables and route fillers; migration head and downgrades for 0006/0005.
+  - Frontend: execution panel and history on the plan page, the integrations page and connect flow, `tests/execution.test.tsx`.
+  - Docs: AMD-18 with contract notes. Dependencies: `google-auth==2.62.0` (new, with `cryptography`, `pyasn1`, `pyasn1-modules`), and `httpx==0.28.1` moved from dev to runtime.
+- **Tests observed in this session:**
+  - Backend: `ruff check` pass; `ruff format --check` pass; `mypy` (strict) no issues in 150 files; `pip-audit` no known vulnerabilities.
+  - `pytest --cov --cov-fail-under=85`, first full run: 724 passed, **4 failed**, 2 skipped. All four were harness gaps:
+    - The T-16 route matrix did not substitute `{action_id}`/`{integration_id}` (422 instead of 404).
+    - The migration test's table list lacked the new tables.
+    - **Fix:** extended both; no assertion was weakened.
+  - Affected files rerun: 134 passed. Second full run: **728 passed, 2 skipped (opt-in live tests), 5 deselected (perf)**. Coverage 95.31%; auth/tenancy, analytics, verification and critic gates ≥95% pass; `app/actions` coverage 93%. The Phase 7 intermittent test passed in both full runs.
+  - Brief scenarios, each a deterministic fake-Google test in `tests/actions/test_execution.py`:
+    - Authorized write with independent read-back.
+    - Missing or invalid approval (unapproved, forged binding, extra fields).
+    - Wrong business (404) and non-owner roles (403).
+    - Stale version after a revision.
+    - Repeated approval and clicks.
+    - 6 simultaneous requests.
+    - Two concurrent workers.
+    - Timeout before and after the write.
+    - 5xx and reset after the write.
+    - 429 with `Retry-After`.
+    - Bounded exponential backoff.
+    - Expired token refresh, and revoked credentials.
+    - Network disconnection retried by the queue.
+    - Invalid destination (missing, unshared, foreign header).
+    - Partial failure followed by retry.
+    - Verification mismatch (edited, duplicated).
+    - Exhausted retries before and after a sent write.
+    - Formula injection.
+    - Server restart mid-write.
+    - Revoked destination.
+    - No write on rejected plans.
+  - Defects found by these tests and fixed during the phase:
+    - Per-tab key numbering hid a queue row from reconciliation after a partial failure (the read-back caught it). Presence is now per tab and keys are unique across tabs.
+    - The membership RLS hid the approver's role from the worker.
+    - Post-commit refreshes lost the RLS context.
+    - A crashed job could not reclaim its own lease (`lease_owner`).
+    - A check constraint blocked revoking a verified binding.
+  - Frontend (Node 24.22.0 per `.nvmrc`; Node 20 on the PATH cannot start Vitest): `next typegen && tsc --noEmit` pass, `eslint` pass, Vitest 49/49. The OpenAPI document and generated types were regenerated.
+  - **Not run:** the real Google Sheets smoke test (`tests/actions/test_live_sheets.py`, skipped: no service-account key or spreadsheet is available in this session); Playwright E2E; perf benchmarks; the live-LLM test. Remote CI is not observed.
+- **Completion gate status:** **Not met in this session.** Everything is implemented and passes against the deterministic fake, but "executed against a real connected system and independently verified" requires the opt-in smoke test with real credentials. To close it: `ROOT_LIVE_SHEETS_TESTS=1 GOOGLE_SERVICE_ACCOUNT_JSON="$(base64 < key.json)" ROOT_LIVE_SPREADSHEET_ID=<id shared with the service account> uv run pytest tests/actions/test_live_sheets.py -s`, then record its `LIVE OK` line here.
+- **Operational limitations:**
+  - Each read loads the whole ROOT tabs (fine for thousands of rows, not for very large sheets).
+  - One verified spreadsheet per business; disconnecting is API-only (no UI button).
+  - The `'` escape may be shown or kept as a quote prefix by Sheets; verification accepts either.
+  - Tab creation is not counted as a row write, so a `failed` action may have left empty ROOT tabs with headers.
+  - The executor runs in the single in-process worker (ADR-003).
+  - Sheets quotas (about 60 write requests per minute per user) are respected only through backoff, not a shared rate limiter.
+- **Commit hash and GitHub push status:** Appended below after commit.
+- **Next-phase dependencies:** Phase 9 (baseline 12: hardening). Do not begin it in this session.

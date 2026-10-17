@@ -515,5 +515,71 @@ export interface PlanDetail extends PlanSummary {
   approved: { version: number; content_hash: string; approved_by: Person; approved_at: string | null } | null;
   decisions: PlanDecisionView[];
   catalog: { version: string; action_types: Record<ActionType, { risky: boolean; label: string }> };
-  execution: { available: boolean };
+  execution: {
+    integration_ready: boolean;
+    actions: { id: string; plan_version: number; status: ActionStatus; error_code: string | null }[];
+  };
+}
+
+/** Execution of an approved plan version in Google Sheets (AMD-18). */
+export type ActionStatus = "pending" | "succeeded" | "verified" | "failed" | "manual_review";
+
+export interface Verification {
+  ok: boolean;
+  tabs: Record<string, { expected: number; found: number }>;
+  missing: string[];
+  duplicated: string[];
+  mismatched: string[];
+  unexpected: string[];
+  checked_at: string;
+}
+
+export interface ActionSummary {
+  id: string;
+  plan_id: string;
+  plan_version: number;
+  content_hash: string;
+  approval_id: string;
+  kind: string;
+  status: ActionStatus;
+  error_code: string | null;
+  attempt_count: number;
+  payload_hash: string;
+  destination: { spreadsheet_id: string; tabs: string[]; url: string };
+  rows: Record<string, number>;
+  not_executed: { strategy: string; action_type: string; reason: string }[];
+  external_ref: { spreadsheet_id: string; tabs: string[]; updated_ranges: Record<string, string | null> } | null;
+  verification: Verification | null;
+  requested_by: string;
+  created_at: string;
+  updated_at: string;
+  finished_at: string | null;
+}
+
+export interface ActionAttempt {
+  attempt: number;
+  status: "started" | "completed" | "failed" | "interrupted";
+  error_code: string | null;
+  writes_sent: boolean;
+  calls: { op: string; status: number | string; ms: number }[];
+  started_at: string;
+  finished_at: string | null;
+}
+
+export interface ActionDetail extends ActionSummary {
+  payload: { tabs: { title: string; header: string[]; rows: string[][] }[] };
+  attempts: ActionAttempt[];
+  audit: { action: string; actor_user_id: string | null; at: string; metadata: Record<string, unknown> }[];
+}
+
+export interface Integration {
+  id: string;
+  kind: "google_sheets";
+  status: "pending_verification" | "verified" | "revoked";
+  spreadsheet_id: string;
+  spreadsheet_url: string;
+  service_account_email: string | null;
+  verify_expires_at: string | null;
+  verified_at: string | null;
+  created_at: string;
 }

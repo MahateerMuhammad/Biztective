@@ -39,6 +39,15 @@ export default async function BusinessPage({ params }: PageProps<"/businesses/[b
         </dl>
       </div>
 
+      {business.role !== "viewer" ? (
+        <p className="text-sm">
+          <Link href={`/businesses/${businessId}/integrations`} className="font-medium underline-offset-4 hover:underline">
+            Integrations
+          </Link>{" "}
+          · connect the Google Sheet that approved plans are written to
+        </p>
+      ) : null}
+
       <Card>
         <CardHeader>
           <CardTitle>

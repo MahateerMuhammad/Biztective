@@ -10,6 +10,8 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import health
+from app.actions.executor import ActionRuntime
+from app.actions.router import router as actions_router
 from app.analytics.router import router as analytics_router
 from app.analytics.service import analyze_dataset, mark_analysis_failed
 from app.audit.router import router as audit_router
@@ -47,11 +49,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     provider = provider_from_settings(settings)
     investigations = InvestigationRuntime(settings, provider)
     recovery = RecoveryRuntime(settings, provider)
+    actions = ActionRuntime(settings)
     job_handlers: dict[JobType, Handler] = {
         "ingest_dataset": ingest_dataset,
         "analyze_dataset": analyze_dataset,
         "run_investigation": investigations.run,
         "run_recovery_plan": recovery.run,
+        "execute_action": actions.run,
     }
 
     async def on_final_failure(job: LeasedJob, code: str) -> None:
@@ -61,6 +65,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await mark_analysis_failed(sessionmaker, job, code)
         elif job.type == "run_recovery_plan":
             await recovery.mark_failed(sessionmaker, job, code)
+        elif job.type == "execute_action":
+            await actions.mark_failed(sessionmaker, job, code)
         else:
             await investigations.mark_failed(sessionmaker, job, code)
 
@@ -98,6 +104,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.job_handlers = job_handlers
     app.state.investigations = investigations
     app.state.recovery = recovery
+    app.state.actions = actions
     app.state.migration_head = health.expected_migration_head()
 
     api = APIRouter(prefix="/api/v1")
@@ -108,6 +115,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.include_router(analytics_router)
     api.include_router(investigation_router)
     api.include_router(recovery_router)
+    api.include_router(actions_router)
     api.include_router(audit_router)
     app.include_router(api)
     register_error_handlers(app)

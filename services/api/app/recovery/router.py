@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
+from app.actions import service as actions
 from app.analytics.evidence import sha256_of
 from app.audit.writer import record_audit
 from app.auth.dependencies import client_host
@@ -25,6 +26,7 @@ from app.investigation.store import jsonable
 from app.models import (
     EvidenceItem,
     Investigation,
+    PlanAction,
     PlanDecision,
     RecoveryPlan,
     RecoveryPlanVersion,
@@ -174,6 +176,25 @@ async def _decisions(db: DbSession, p: RecoveryPlan) -> list[dict[str, Any]]:
     ]
 
 
+async def _execution(db: DbSession, p: RecoveryPlan) -> dict[str, Any]:
+    integration = await actions.verified_integration(db, p.business_id)
+    rows = await db.scalars(
+        select(PlanAction).where(PlanAction.plan_id == p.id).order_by(PlanAction.created_at)
+    )
+    return {
+        "integration_ready": integration is not None,
+        "actions": [
+            {
+                "id": str(a.id),
+                "plan_version": a.plan_version,
+                "status": a.status,
+                "error_code": a.error_code,
+            }
+            for a in rows
+        ],
+    }
+
+
 @router.post("/investigations/{investigation_id}/recovery-plans", status_code=202)
 async def create_plan(
     request: Request,
@@ -286,8 +307,8 @@ async def get_plan(db: DbSession, tenant: Reader, plan_id: UUID) -> dict[str, An
             "version": CATALOG_VERSION,
             "action_types": {k: dict(v) for k, v in ACTION_TYPES.items()},
         },
-        # Approval records a decision only. Nothing is executed in this phase.
-        "execution": {"available": False},
+        # Approval records a decision only; an owner requests execution separately (AMD-18).
+        "execution": await _execution(db, p),
     }
 
 

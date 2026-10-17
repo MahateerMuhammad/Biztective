@@ -4,11 +4,13 @@ import { notFound } from "next/navigation";
 
 import { AutoRefresh } from "@/components/auto-refresh";
 import { DecisionPanel } from "@/components/recovery/decision-panel";
+import { ExecutionHistory } from "@/components/recovery/execution-history";
+import { ExecutionPanel } from "@/components/recovery/execution-panel";
 import { StrategyCard } from "@/components/recovery/strategy-card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { getBusiness, getPlan } from "@/lib/api/server";
-import type { PlanDecisionView, PlanStatus } from "@/lib/api/types";
+import { getAction, getBusiness, getPlan } from "@/lib/api/server";
+import type { ActionDetail, PlanDecisionView, PlanStatus } from "@/lib/api/types";
 import { PLAN_ISSUES, formatMoney } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Recovery plan" };
@@ -34,7 +36,12 @@ export default async function PlanPage({ params }: PageProps<"/businesses/[busin
   if (!business || !plan) notFound();
   const current = plan.current;
   const content = current?.content;
-  const working = plan.status === "queued" || plan.status === "running";
+  const actions = (await Promise.all(plan.execution.actions.map((a) => getAction(businessId, a.id)))).filter(
+    (a): a is ActionDetail => a !== null,
+  );
+  const latest = actions.find((a) => a.plan_version === plan.approved?.version) ?? null;
+  const executing = actions.some((a) => a.status === "pending" || a.status === "succeeded");
+  const working = plan.status === "queued" || plan.status === "running" || executing;
 
   return (
     <div className="grid gap-6">
@@ -59,10 +66,34 @@ export default async function PlanPage({ params }: PageProps<"/businesses/[busin
           </AlertTitle>
           <AlertDescription>
             Content hash <span className="font-mono">{plan.approved.content_hash.slice(0, 12)}…</span>. Approval records your
-            decision; nothing has been executed{plan.execution.available ? "" : " (execution is not available yet)"}. Editing the
-            plan removes this approval.
+            decision; ROOT executes nothing until an owner starts it below. Editing the plan removes this approval.
           </AlertDescription>
         </Alert>
+      ) : null}
+
+      {plan.approved || actions.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              <h2 className="text-base font-semibold">Execution</h2>
+            </CardTitle>
+            <CardDescription>
+              Approved review tasks and customer-service queues are written to your own Google Sheet, then read back and
+              checked. Every attempt is recorded.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            <ExecutionPanel
+              businessId={businessId}
+              planId={plan.id}
+              approved={plan.approved ? { version: plan.approved.version, content_hash: plan.approved.content_hash } : null}
+              integrationReady={plan.execution.integration_ready}
+              current={latest}
+              role={business.role}
+            />
+            <ExecutionHistory actions={actions} />
+          </CardContent>
+        </Card>
       ) : null}
 
       {current && content ? (

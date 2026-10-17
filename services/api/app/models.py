@@ -575,3 +575,62 @@ class PlanDecision(Base):
     applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     outcome: Mapped[str | None] = mapped_column(Text)
     refusal: Mapped[str | None] = mapped_column(Text)
+
+
+class Integration(Base):
+    __tablename__ = "integrations"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid7)
+    business_id: Mapped[uuid.UUID] = mapped_column()
+    kind: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)
+    spreadsheet_id: Mapped[str] = mapped_column(Text)
+    verify_code_hash: Mapped[str | None] = mapped_column(Text)
+    verify_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[uuid.UUID] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PlanAction(Base):
+    __tablename__ = "plan_actions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    business_id: Mapped[uuid.UUID] = mapped_column()
+    plan_id: Mapped[uuid.UUID] = mapped_column()
+    plan_version: Mapped[int] = mapped_column(SmallInteger)
+    content_hash: Mapped[str] = mapped_column(Text)
+    approval_id: Mapped[uuid.UUID] = mapped_column()
+    kind: Mapped[str] = mapped_column(Text)
+    integration_id: Mapped[uuid.UUID] = mapped_column()
+    destination: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    payload_hash: Mapped[str] = mapped_column(Text)
+    idempotency_key: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)
+    attempts: Mapped[int] = mapped_column(SmallInteger, default=0)
+    error_code: Mapped[str | None] = mapped_column(Text)
+    external_ref: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
+    verification: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
+    requested_by: Mapped[uuid.UUID] = mapped_column()
+    lease_owner: Mapped[uuid.UUID | None] = mapped_column()
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ActionExecution(Base):
+    __tablename__ = "action_executions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid7)
+    business_id: Mapped[uuid.UUID] = mapped_column()
+    action_id: Mapped[uuid.UUID] = mapped_column()
+    attempt: Mapped[int] = mapped_column(SmallInteger)
+    status: Mapped[str] = mapped_column(Text)
+    error_code: Mapped[str | None] = mapped_column(Text)
+    writes_sent: Mapped[bool] = mapped_column(Boolean, default=False)
+    calls: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

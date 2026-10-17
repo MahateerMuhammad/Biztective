@@ -46,6 +46,12 @@ class Settings(BaseSettings):
     investigation_timeout_seconds: float = Field(default=600.0, gt=0, le=3600)
     investigation_starts_per_hour: int = Field(default=20, ge=1, le=1000)  # SEC-20
 
+    # Google Sheets execution (AMD-18). Base64 of the service-account key file; backend only.
+    google_service_account_json: SecretStr | None = None
+    sheets_timeout_seconds: float = Field(default=20.0, gt=0, le=120)
+    sheets_max_retries: int = Field(default=4, ge=0, le=8)
+    sheets_backoff_seconds: float = Field(default=1.0, ge=0, le=30)
+
     @field_validator("database_url")
     @classmethod
     def _psycopg_driver(cls, value: SecretStr) -> SecretStr:

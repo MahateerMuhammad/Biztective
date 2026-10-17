@@ -315,6 +315,8 @@ All tenant-scoped tables have `business_id uuid NOT NULL REFERENCES businesses O
 
 ### 6.4 Recovery and integrations
 
+> **Amended by AMD-18 (Phase 8):** migration `0007` adds `integrations` (Google Sheets columns only; no secret columns), `plan_actions` (instead of `recovery_actions`/`approvals`) and `action_executions` (one row per attempt: `started`, `completed`, `failed`, `interrupted`). Job type `execute_action`.
+
 | Table | Key columns | Notes |
 |---|---|---|
 | `recovery_plans` | id, business_id, investigation_id, status (`awaiting_constraints`, `proposed`, `decided`), constraints jsonb, assumptions jsonb, constraints_by | — |
@@ -456,6 +458,8 @@ Every answer endpoint returns 409 `invalid_state` unless the target is awaiting 
 
 ### 7.8 Recovery actions
 
+> **Amended by AMD-18 (Phase 8):** `POST /recovery-plans/{pid}/actions` `{version, content_hash}` (`action:execute`, 202 new / 200 existing), `GET /recovery-plans/{pid}/actions`, `GET /actions/{aid}` (`investigation:read`, with attempts and audit), `POST /actions/{aid}/retry` (`action:retry`, from `failed` or `manual_review`). The per-action PATCH/approve/reject/revoke/resolve routes below are not built.
+
 | Method | Path | Permission | Notes |
 |---|---|---|---|
 | GET | `/businesses/{bid}/recovery-plans/{pid}` | `investigation:read` | plan, constraints, assumptions, actions, estimates |
@@ -468,6 +472,8 @@ Every answer endpoint returns 409 `invalid_state` unless the target is awaiting 
 | GET | `/businesses/{bid}/actions/{aid}/executions` | `investigation:read` | — |
 
 ### 7.9 Integrations
+
+> **Amended by AMD-18 (Phase 8):** Google Sheets routes only; the Slack and test routes are not built. Errors: 409 `integration_already_bound`, 409 `integration_exists`, 422 `verification_failed`, 503 `integration_unavailable` when no service account is configured.
 
 | Method | Path | Permission | Notes |
 |---|---|---|---|

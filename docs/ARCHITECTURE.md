@@ -449,6 +449,8 @@ The plan validator rejects plans where Σ estimated discount cost > `budget_amou
 
 ### 10.5 Execution and idempotency
 
+> **Amended by AMD-18 (Phase 8):** one owner-requested action `sheets.write_recovery_tasks` per approved plan version, with a stable uuid5 ID. Statuses `pending → succeeded → verified`, `failed`, `manual_review`. Lease on the action, re-authorization before every write, reconcile-by-read before every write, read-back verification. See ROOT_MASTER_PLAN §13 AMD-18.
+
 Action state machine:
 
 ```
@@ -474,6 +476,8 @@ Executor steps for `execute_action`:
 Lease expiry during step 3 → the job is re-leased → step 1 finds `executing` with an attempt `started` → reconcile first (Sheets) or mark `outcome_unknown` (Slack). The external write is never repeated blindly.
 
 ## 11. Integrations
+
+> **Amended by AMD-18 (Phase 8):** Google Sheets only (Slack not delivered). `google-auth` signs the service-account JWT and `httpx` calls the Sheets REST API directly. Tabs `ROOT Review Tasks` and `ROOT Service Queue` with a key column replace the §11.3 action types. Global spreadsheet uniqueness covers verified bindings only.
 
 ### 11.1 Google Sheets model (ADR-012)
 

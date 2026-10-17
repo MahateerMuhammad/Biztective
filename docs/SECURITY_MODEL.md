@@ -61,6 +61,8 @@
 | SEC-24 | Logging hygiene: structured logs with a redaction filter (cookies, `Authorization`, `X-CSRF-Token`, secrets, webhook URLs, passwords, verification codes). Tests assert the absence of sentinel secrets | ASVS V7.1.1, V7.1.2 |
 | SEC-25 | Origin and CORS: the backend serves same-origin through the proxy. CORS is disabled except for `FRONTEND_ORIGIN` with credentials. `Origin` is checked on unsafe methods | ASVS V14.5.3 |
 
+> **Amended by AMD-18 (Phase 8):** SEC-15: Google APIs are reached through `httpx` (not the discovery client) at two constant hosts, `oauth2.googleapis.com` and `sheets.googleapis.com`; the key file's own token URI is ignored. SEC-13: execution is a separate owner request after approval; re-authorization happens before every write.
+
 ## 4. Authentication and sessions
 
 ### 4.1 Registration and login
@@ -108,6 +110,7 @@
 | `action:retry` | ✓ | | |
 | `integration:read` | ✓ | ✓ | |
 | `integration:manage` | ✓ | | |
+| `action:execute` (AMD-18) | ✓ | | |
 | `audit:read` | ✓ | | |
 
 > **Amended by AMD-10 (implemented in Phase 4):** `analysis:run` exists, granted to owner and analyst. `analytics:read` is granted to owner, analyst and viewer.

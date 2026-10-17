@@ -25,6 +25,14 @@ class PermanentJobError(Exception):
         self.code = code
 
 
+class RetryableJobError(Exception):
+    """A transient failure the queue should retry with backoff; `code` is recorded."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
+
+
 async def _heartbeat(sessionmaker: async_sessionmaker[AsyncSession], job: LeasedJob) -> None:
     while True:
         await asyncio.sleep(HEARTBEAT_SECONDS)
@@ -47,6 +55,8 @@ async def process_next_job(
         await handlers[job.type](sessionmaker, job)
     except PermanentJobError as exc:
         await _record_failure(sessionmaker, job, exc.code, False, on_final_failure)
+    except RetryableJobError as exc:
+        await _record_failure(sessionmaker, job, exc.code, True, on_final_failure)
     except (OperationalError, DBAPIError, OSError) as exc:
         logger.warning(
             "job_transient_error", extra={"job_id": str(job.id), "error": type(exc).__name__}

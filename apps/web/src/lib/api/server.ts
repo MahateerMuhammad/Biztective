@@ -4,6 +4,8 @@ import { cookies } from "next/headers";
 import { cache } from "react";
 
 import type {
+  ActionDetail,
+  ActionSummary,
   AnalysisRevision,
   AnalyticsEnvelope,
   Business,
@@ -11,6 +13,7 @@ import type {
   DatasetDetail,
   DatasetPage,
   IncidentDetail,
+  Integration,
   InvestigationDetail,
   InvestigationSummary,
   IssuePage,
@@ -176,5 +179,24 @@ export async function listPlans(businessId: string, investigationId: string): Pr
 export function getPlan(businessId: string, planId: string) {
   return analyticsGet<PlanDetail>(
     `/api/v1/businesses/${encodeURIComponent(businessId)}/recovery-plans/${encodeURIComponent(planId)}`,
+  );
+}
+
+export async function listActions(businessId: string, planId: string): Promise<ActionSummary[]> {
+  const page = await analyticsGet<{ items: ActionSummary[] }>(
+    `/api/v1/businesses/${encodeURIComponent(businessId)}/recovery-plans/${encodeURIComponent(planId)}/actions`,
+  );
+  return page?.items ?? [];
+}
+
+export function getAction(businessId: string, actionId: string) {
+  return analyticsGet<ActionDetail>(
+    `/api/v1/businesses/${encodeURIComponent(businessId)}/actions/${encodeURIComponent(actionId)}`,
+  );
+}
+
+export function listIntegrations(businessId: string) {
+  return analyticsGet<{ available: boolean; items: Integration[] }>(
+    `/api/v1/businesses/${encodeURIComponent(businessId)}/integrations`,
   );
 }

@@ -23,6 +23,10 @@ class Permission(StrEnum):
     PLAN_CREATE = "plan:create"
     PLAN_DECIDE = "plan:decide"  # reject, request changes, revise (AMD-17)
     PLAN_APPROVE = "plan:approve"  # owner only
+    ACTION_EXECUTE = "action:execute"  # owner only (AMD-18)
+    ACTION_RETRY = "action:retry"  # owner only
+    INTEGRATION_READ = "integration:read"
+    INTEGRATION_MANAGE = "integration:manage"  # owner only
 
 
 ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
@@ -39,6 +43,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.HITL_ANSWER,
             Permission.PLAN_CREATE,
             Permission.PLAN_DECIDE,
+            Permission.INTEGRATION_READ,
         }
     ),
     "viewer": frozenset(
