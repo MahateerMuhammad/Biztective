@@ -93,7 +93,7 @@ jobs:
 
           # 3. Production startup, /login health probe, security headers, and graceful SIGTERM shutdown
           CID="$(docker run -d -p 13000:3000 \
-            -e BACKEND_URL=http://127.0.0.1:18000 \
+            -e BACKEND_URL=https://root-api-app.alternatefutures.ai \
             ttl.sh/root2-mahateer-web-1.0.0:24h)"
           trap 'docker logs "$CID" || true; docker rm -f "$CID" >/dev/null 2>&1 || true' EXIT
           for _ in $(seq 1 30); do

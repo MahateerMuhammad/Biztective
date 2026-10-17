@@ -9,7 +9,7 @@ FROM node:24-bookworm-slim AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-ARG BACKEND_URL=http://127.0.0.1:8000
+ARG BACKEND_URL=https://root-api-app.alternatefutures.ai
 ENV BACKEND_URL=$BACKEND_URL \
     NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1
