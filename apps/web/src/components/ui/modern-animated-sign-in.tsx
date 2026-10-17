@@ -2,6 +2,7 @@
 
 import { cn } from "cn";
 import { Eye, EyeOff, LoaderCircle, type LucideIcon } from "lucide-react";
+import Image from "next/image";
 import {
   motion,
   useAnimation,
@@ -31,11 +32,11 @@ export function Input({ className, type, ...props }: ComponentProps<"input">) {
   const [hovered, setHovered] = useState(false);
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
-  const background = useMotionTemplate`radial-gradient(${hovered ? GLOW_RADIUS : 0}px circle at ${mouseX}px ${mouseY}px, #3b82f6, transparent 80%)`;
+  const background = useMotionTemplate`radial-gradient(${GLOW_RADIUS}px circle at ${mouseX}px ${mouseY}px, #3b82f6, transparent 80%)`;
 
   return (
     <motion.div
-      style={{ background }}
+      style={{ background: hovered ? background : "transparent" }}
       onMouseMove={({ currentTarget, clientX, clientY }) => {
         const { left, top } = currentTarget.getBoundingClientRect();
         mouseX.set(clientX - left);
@@ -129,7 +130,7 @@ export function BoxReveal({
 /* ------------------------------------------------------------- decoration */
 
 /** Concentric, softly pulsing circles that fade out towards the bottom. */
-export function Ripple({ count = 8, baseSize = 210, baseOpacity = 0.24 }: { count?: number; baseSize?: number; baseOpacity?: number }) {
+export function Ripple({ count = 8, baseSize = 210, baseOpacity = 0.42 }: { count?: number; baseSize?: number; baseOpacity?: number }) {
   return (
     <div
       aria-hidden
@@ -140,11 +141,11 @@ export function Ripple({ count = 8, baseSize = 210, baseOpacity = 0.24 }: { coun
         return (
           <div
             key={i}
-            className="absolute top-1/2 left-1/2 animate-ripple rounded-full border border-blue-500/25 bg-blue-500/10 dark:border-blue-300/20 dark:bg-blue-400/10 shadow-xl"
+            className="absolute top-1/2 left-1/2 animate-ripple rounded-full border border-blue-600/50 bg-blue-500/15 dark:border-blue-300/12 dark:bg-blue-400/6 shadow-xl"
             style={{
               width: size,
               height: size,
-              opacity: baseOpacity - i * 0.03,
+              opacity: baseOpacity - i * 0.04,
               animationDelay: `${i * 0.06}s`,
               transform: "translate(-50%, -50%) scale(1)",
             }}
@@ -196,6 +197,7 @@ export function TechOrbitDisplay({ text, caption, orbits }: { text: string; capt
   return (
     <div aria-hidden className="relative flex size-full items-center justify-center overflow-hidden">
       <div className="relative z-10 text-center">
+        <Image src="/logo.png" alt="" width={640} height={443} priority className="mx-auto mb-4 h-24 w-auto" />
         <p className="bg-gradient-to-b from-foreground to-blue-500/60 dark:to-blue-300/60 bg-clip-text text-7xl font-semibold tracking-tight text-transparent">
           {text}
         </p>

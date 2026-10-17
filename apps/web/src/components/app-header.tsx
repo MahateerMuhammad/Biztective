@@ -1,6 +1,7 @@
 "use client";
 
-import { ChevronDown, LogOut, SearchCheck } from "lucide-react";
+import { ChevronDown, LogOut } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -65,9 +66,7 @@ export function AppHeader({
             href="/"
             className="flex shrink-0 items-center gap-2 rounded-md text-lg font-semibold tracking-tight outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <span aria-hidden="true" className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <SearchCheck className="size-5" strokeWidth={2.25} />
-            </span>
+            <Image src="/logo.png" alt="" aria-hidden="true" width={640} height={443} priority className="h-7 w-auto" />
             Biztective
           </Link>
           {business ? (
