@@ -29,6 +29,7 @@ import type {
   SegmentSummary,
   VersionComparison,
   VersionSummary,
+  SourceConnection,
 } from "./types";
 import { toApiProblem } from "./types";
 
@@ -242,4 +243,8 @@ export async function listEvents(businessId: string, investigationId: string, af
     `${business(businessId)}/investigations/${encodeURIComponent(investigationId)}/events?after_seq=${afterSeq}&limit=200`,
   );
   return page ?? { items: [], last_seq: 0 };
+}
+
+export function listSources(businessId: string) {
+  return analyticsGet<SourceConnection[]>(`${business(businessId)}/sources`);
 }

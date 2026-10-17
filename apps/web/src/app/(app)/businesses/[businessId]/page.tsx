@@ -47,16 +47,21 @@ export default async function BusinessHealthPage({ params }: PageProps<"/busines
             title={processing ? "Your data is being checked" : "Start with your sales data"}
             action={
               !processing && canAct ? (
-                <Link href={`/businesses/${businessId}/datasets/new`} className={buttonVariants()}>
-                  Upload data
-                </Link>
+                <div className="flex flex-wrap justify-center gap-3">
+                  <Link href={`/businesses/${businessId}/datasets/new`} className={buttonVariants()}>
+                    Upload files (CSV)
+                  </Link>
+                  <Link href={`/businesses/${businessId}/datasets/connect`} className={buttonVariants({ variant: "outline" })}>
+                    Connect a PostgreSQL database
+                  </Link>
+                </div>
               ) : null
             }
           >
             {processing
               ? "This page updates by itself when the check finishes."
               : canAct
-                ? "Biztective needs orders, products, customers and returns (CSV) to measure your business and find what changed."
+                ? "Biztective needs orders, products, customers and returns — as CSV files or from a PostgreSQL database — to measure your business and find what changed."
                 : "An owner or analyst can upload data."}
           </EmptyState>
         </SectionCard>

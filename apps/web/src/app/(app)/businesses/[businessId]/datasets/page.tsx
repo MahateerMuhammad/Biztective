@@ -4,7 +4,9 @@ import { notFound } from "next/navigation";
 
 import { EmptyState, PageHeader, SectionCard, StatusChip, rowLinkClass, tableClass, tableWrap, tdClass, thClass, trClass } from "@/components/page";
 import { Pager, cursorParam } from "@/components/pager";
+import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
+import { isPostgresDataset } from "@/lib/api/types";
 import { getBusiness, listDatasets } from "@/lib/api/server";
 import { formatCount, formatDate, formatDateTime } from "@/lib/format";
 import { datasetStatus } from "@/lib/status";
@@ -18,17 +20,25 @@ export default async function DatasetsPage({ params, searchParams }: PageProps<"
   const [business, datasets] = await Promise.all([getBusiness(businessId), listDatasets(businessId, cursor)]);
   if (!business || !datasets) notFound();
   const upload = business.role !== "viewer" ? `/businesses/${businessId}/datasets/new` : null;
+  const connect = business.role !== "viewer" ? `/businesses/${businessId}/datasets/connect` : null;
+  const choices =
+    upload && connect ? (
+      <div className="flex flex-wrap gap-3">
+        <Link href={upload} className={buttonVariants()}>Upload files (CSV)</Link>
+        <Link href={connect} className={buttonVariants({ variant: "outline" })}>Connect a PostgreSQL database</Link>
+      </div>
+    ) : null;
   return (
     <div className="grid gap-6">
       <PageHeader
         title="Data"
-        subtitle="Every upload is checked and kept as its own version."
-        action={upload ? <Link href={upload} className={buttonVariants()}>Upload data</Link> : null}
+        subtitle="Every upload or database sync is checked and kept as its own version."
+        action={choices}
       />
       <SectionCard>
         {datasets.items.length === 0 ? (
-          <EmptyState icon={Database} title="No data yet" action={upload ? <Link href={upload} className={buttonVariants()}>Upload data</Link> : null}>
-            Upload your orders, products, customers and returns to get started.
+          <EmptyState icon={Database} title="No data yet" action={choices}>
+            Upload your orders, products, customers and returns as CSV files, or connect a PostgreSQL database that holds them.
           </EmptyState>
         ) : (
           <div className={tableWrap} tabIndex={0} role="region" aria-label="Table, scrollable">
@@ -52,6 +62,7 @@ export default async function DatasetsPage({ params, searchParams }: PageProps<"
                         <Link href={`/businesses/${businessId}/datasets/${dataset.id}`} className={rowLinkClass}>
                           Version {dataset.version}
                         </Link>
+                        {isPostgresDataset(dataset) ? <Badge className="ml-2">From PostgreSQL</Badge> : null}
                       </td>
                       <td className={tdClass}><StatusChip tone={status.tone}>{status.label}</StatusChip></td>
                       <td className={`${tdClass} text-right tabular-nums`}>{formatCount(dataset.orders_rows)}</td>

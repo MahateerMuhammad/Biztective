@@ -1,3 +1,5 @@
+import { Badge } from "@/components/ui/badge";
+import { isPostgresDataset } from "@/lib/api/types";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -59,6 +61,7 @@ export default async function DatasetPage({
           <span className="flex flex-wrap items-center gap-3">
             Data version {dataset.version}
             <StatusChip tone={status.tone}>{status.label}</StatusChip>
+            {isPostgresDataset(dataset) ? <Badge>From PostgreSQL</Badge> : null}
           </span>
         }
         subtitle={

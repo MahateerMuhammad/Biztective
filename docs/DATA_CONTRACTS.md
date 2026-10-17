@@ -998,3 +998,5 @@ Paths relative to `/api/v1/businesses/{business_id}`; membership required, cross
 | `run.resumed` | adds `answer` (true when resumed with an answer) |
 
 Audit: `hitl.answered` (target clarification; metadata investigation_id, criterion, option_id, effect, `free_text: true|false`; never the text).
+
+> **Amended by AMD-24:** read-only PostgreSQL business source feeding the existing CSV ingestion path; `source_connections` tenant table without stored passwords; resolved-address network policy, read-only transactions and identifier allowlists (see ROOT_MASTER_PLAN §13).

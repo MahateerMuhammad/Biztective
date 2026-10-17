@@ -36,6 +36,7 @@ from app.jobs.queue import JobType, LeasedJob
 from app.jobs.worker import Handler, run_worker
 from app.recovery.router import router as recovery_router
 from app.recovery.service import RecoveryRuntime
+from app.sources.router import router as sources_router
 from app.tenancy.router import router as tenancy_router
 
 MAX_JSON_BODY_BYTES = 1024 * 1024  # SEC-07
@@ -118,6 +119,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.include_router(recovery_router)
     api.include_router(actions_router)
     api.include_router(audit_router)
+    api.include_router(sources_router)
     app.include_router(api)
     register_error_handlers(app)
 

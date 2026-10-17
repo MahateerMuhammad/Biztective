@@ -757,3 +757,5 @@ Migrations follow **expand → migrate → contract** (`R-14`): a release only a
 | Sheets sharing step adds demo friction | Pre-connected demo business. Verification is shown in a rehearsal video |
 | Slack non-idempotency | `outcome_unknown` with human decision. Slack is optional |
 | LangGraph API changes | Pin versions, keep graph code thin, contract tests around resume |
+
+> **Amended by AMD-24:** read-only PostgreSQL business source feeding the existing CSV ingestion path; `source_connections` tenant table without stored passwords; resolved-address network policy, read-only transactions and identifier allowlists (see ROOT_MASTER_PLAN §13).

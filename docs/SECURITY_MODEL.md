@@ -263,3 +263,5 @@ Rules: `.env` files are git-ignored. `.env.example` contains names only. No secr
 | The service-account email is shared across tenants | Mitigated by ownership verification and unique binding | 11 |
 | LLM provider sees aggregates | Data minimisation. Choose a provider with no-training-on-API-data terms (verified in Phase 7) | 7 |
 | Slack webhook effects are non-idempotent | `outcome_unknown` with human resolution | 11 |
+
+> **Amended by AMD-24:** read-only PostgreSQL business source feeding the existing CSV ingestion path; `source_connections` tenant table without stored passwords; resolved-address network policy, read-only transactions and identifier allowlists (see ROOT_MASTER_PLAN §13).

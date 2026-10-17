@@ -83,6 +83,8 @@ async def create_dataset(
     business_timezone: str,
     currency: str,
     client_host: str | None,
+    source_type: str = "upload",
+    source_connection_id: uuid.UUID | None = None,
 ) -> uuid.UUID:
     """Create version N+1 (caller holds the upload lock and commits)."""
     checksum = dataset_checksum(files)
@@ -125,6 +127,8 @@ async def create_dataset(
             currency=currency,
             issue_counts={},
             uploaded_by=tenant.user.id,
+            source_type=source_type,
+            source_connection_id=source_connection_id,
         )
     )
     await db.flush()

@@ -180,3 +180,4 @@ cd apps/web
 PLAYWRIGHT_REMOTE_URL=https://root-web-app.alternatefutures.ai \
   npx playwright test
 ```
+

@@ -622,3 +622,39 @@ export interface InvestigationEvent {
   occurred_at: string;
   payload: Record<string, unknown>;
 }
+
+/** A saved read-only PostgreSQL source. The password is never returned by the API. */
+export interface SourceConnection {
+  id: string;
+  kind: "postgres";
+  host: string;
+  port: number;
+  database: string;
+  username: string;
+  schema_name: string;
+  table_orders: string;
+  table_products: string;
+  table_customers: string;
+  table_returns: string;
+  created_at: string;
+  last_sync_at: string | null;
+  last_sync_status: "succeeded" | "failed" | null;
+  last_sync_error: string | null;
+  last_dataset_id: string | null;
+}
+
+export interface SourceTestResult {
+  ok: boolean;
+  tables: string[];
+}
+
+export interface SourceSyncResult {
+  dataset_id: string;
+  /** "unchanged": nothing changed since the last sync; dataset_id is that existing version. */
+  status: "created" | "unchanged";
+}
+
+/** Datasets may carry where they came from; absent means a CSV upload. */
+export function isPostgresDataset(dataset: object): boolean {
+  return "source_type" in dataset && (dataset as { source_type?: unknown }).source_type === "postgres";
+}

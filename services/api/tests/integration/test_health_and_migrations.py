@@ -33,6 +33,7 @@ EXPECTED_TABLES = {
     "plan_decisions",
     "integrations",
     "plan_actions",
+    "source_connections",
     "action_executions",
     "hypothesis_evaluations",
     "idempotency_keys",
@@ -154,7 +155,7 @@ def test_migrations_upgrade_downgrade_upgrade(admin_url: str, app_password: str)
             command.downgrade(config, target)
             command.upgrade(config, "head")
         with engine.connect() as conn:
-            assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "0007"
+            assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "0008"
             assert conn.scalar(text("SELECT count(*) FROM analysis_configs")) == 1
     finally:
         engine.dispose()

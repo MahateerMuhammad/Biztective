@@ -106,6 +106,8 @@ class Dataset(Base):
     uploaded_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    source_type: Mapped[str] = mapped_column(Text, default="upload", server_default="upload")
+    source_connection_id: Mapped[uuid.UUID | None] = mapped_column()
 
 
 class DatasetFile(Base):
@@ -634,3 +636,26 @@ class ActionExecution(Base):
     calls: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class SourceConnection(Base):
+    __tablename__ = "source_connections"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid7)
+    business_id: Mapped[uuid.UUID] = mapped_column()
+    kind: Mapped[str] = mapped_column(Text)
+    host: Mapped[str] = mapped_column(Text)
+    port: Mapped[int] = mapped_column(Integer)
+    database: Mapped[str] = mapped_column(Text)
+    username: Mapped[str] = mapped_column(Text)
+    schema_name: Mapped[str] = mapped_column(Text)
+    table_orders: Mapped[str] = mapped_column(Text)
+    table_products: Mapped[str] = mapped_column(Text)
+    table_customers: Mapped[str] = mapped_column(Text)
+    table_returns: Mapped[str] = mapped_column(Text)
+    created_by: Mapped[uuid.UUID] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_sync_status: Mapped[str | None] = mapped_column(Text)
+    last_sync_error: Mapped[str | None] = mapped_column(Text)
+    last_dataset_id: Mapped[uuid.UUID | None] = mapped_column()

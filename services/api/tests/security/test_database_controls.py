@@ -42,6 +42,7 @@ TENANT_TABLES = (
     "integrations",
     "plan_actions",
     "action_executions",
+    "source_connections",
 )
 
 

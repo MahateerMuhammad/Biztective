@@ -274,6 +274,240 @@
         "title": "BusinessUpdate",
         "type": "object"
       },
+      "ConnectionCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "database": {
+            "maxLength": 63,
+            "minLength": 1,
+            "title": "Database",
+            "type": "string"
+          },
+          "host": {
+            "maxLength": 253,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9.-]+$",
+            "title": "Host",
+            "type": "string"
+          },
+          "password": {
+            "format": "password",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string",
+            "writeOnly": true
+          },
+          "port": {
+            "default": 5432,
+            "maximum": 65535.0,
+            "minimum": 1.0,
+            "title": "Port",
+            "type": "integer"
+          },
+          "schema": {
+            "default": "public",
+            "pattern": "^[a-z_][a-z0-9_]{0,62}$",
+            "title": "Schema",
+            "type": "string"
+          },
+          "tables": {
+            "$ref": "#/components/schemas/SourceTables"
+          },
+          "username": {
+            "maxLength": 63,
+            "minLength": 1,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "host",
+          "database",
+          "username",
+          "password",
+          "tables"
+        ],
+        "title": "ConnectionCreate",
+        "type": "object"
+      },
+      "ConnectionFields": {
+        "additionalProperties": false,
+        "properties": {
+          "database": {
+            "maxLength": 63,
+            "minLength": 1,
+            "title": "Database",
+            "type": "string"
+          },
+          "host": {
+            "maxLength": 253,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9.-]+$",
+            "title": "Host",
+            "type": "string"
+          },
+          "password": {
+            "format": "password",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string",
+            "writeOnly": true
+          },
+          "port": {
+            "default": 5432,
+            "maximum": 65535.0,
+            "minimum": 1.0,
+            "title": "Port",
+            "type": "integer"
+          },
+          "schema": {
+            "default": "public",
+            "pattern": "^[a-z_][a-z0-9_]{0,62}$",
+            "title": "Schema",
+            "type": "string"
+          },
+          "username": {
+            "maxLength": 63,
+            "minLength": 1,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "host",
+          "database",
+          "username",
+          "password"
+        ],
+        "title": "ConnectionFields",
+        "type": "object"
+      },
+      "ConnectionOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "database": {
+            "title": "Database",
+            "type": "string"
+          },
+          "host": {
+            "title": "Host",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_dataset_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Dataset Id"
+          },
+          "last_sync_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sync At"
+          },
+          "last_sync_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sync Error"
+          },
+          "last_sync_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "succeeded",
+                  "failed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sync Status"
+          },
+          "port": {
+            "title": "Port",
+            "type": "integer"
+          },
+          "schema_name": {
+            "title": "Schema Name",
+            "type": "string"
+          },
+          "table_customers": {
+            "title": "Table Customers",
+            "type": "string"
+          },
+          "table_orders": {
+            "title": "Table Orders",
+            "type": "string"
+          },
+          "table_products": {
+            "title": "Table Products",
+            "type": "string"
+          },
+          "table_returns": {
+            "title": "Table Returns",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "host",
+          "port",
+          "database",
+          "username",
+          "schema_name",
+          "table_orders",
+          "table_products",
+          "table_customers",
+          "table_returns",
+          "created_at",
+          "last_sync_at",
+          "last_sync_status",
+          "last_sync_error",
+          "last_dataset_id"
+        ],
+        "title": "ConnectionOut",
+        "type": "object"
+      },
       "Constraints": {
         "additionalProperties": false,
         "properties": {
@@ -1537,6 +1771,39 @@
         "title": "Revision",
         "type": "object"
       },
+      "SourceTables": {
+        "additionalProperties": false,
+        "properties": {
+          "customers": {
+            "pattern": "^[a-z_][a-z0-9_]{0,62}$",
+            "title": "Customers",
+            "type": "string"
+          },
+          "orders": {
+            "pattern": "^[a-z_][a-z0-9_]{0,62}$",
+            "title": "Orders",
+            "type": "string"
+          },
+          "products": {
+            "pattern": "^[a-z_][a-z0-9_]{0,62}$",
+            "title": "Products",
+            "type": "string"
+          },
+          "returns": {
+            "pattern": "^[a-z_][a-z0-9_]{0,62}$",
+            "title": "Returns",
+            "type": "string"
+          }
+        },
+        "required": [
+          "orders",
+          "products",
+          "customers",
+          "returns"
+        ],
+        "title": "SourceTables",
+        "type": "object"
+      },
       "StartInvestigation": {
         "additionalProperties": false,
         "properties": {
@@ -1563,6 +1830,75 @@
           "status"
         ],
         "title": "StatusOut",
+        "type": "object"
+      },
+      "SyncRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "password": {
+            "format": "password",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "password"
+        ],
+        "title": "SyncRequest",
+        "type": "object"
+      },
+      "SyncResult": {
+        "properties": {
+          "dataset_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset Id"
+          },
+          "status": {
+            "enum": [
+              "created",
+              "unchanged"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dataset_id",
+          "status"
+        ],
+        "title": "SyncResult",
+        "type": "object"
+      },
+      "TestResult": {
+        "properties": {
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "tables": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tables",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "tables"
+        ],
+        "title": "TestResult",
         "type": "object"
       },
       "UserOut": {
@@ -4969,6 +5305,220 @@
         "summary": "Get Plan Version",
         "tags": [
           "recovery"
+        ]
+      }
+    },
+    "/api/v1/businesses/{business_id}/sources": {
+      "get": {
+        "operationId": "list_connections_api_v1_businesses__business_id__sources_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "business_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Business Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ConnectionOut"
+                  },
+                  "title": "Response List Connections Api V1 Businesses  Business Id  Sources Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Connections",
+        "tags": [
+          "sources"
+        ]
+      },
+      "post": {
+        "operationId": "create_connection_api_v1_businesses__business_id__sources_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "business_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Business Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Connection",
+        "tags": [
+          "sources"
+        ]
+      }
+    },
+    "/api/v1/businesses/{business_id}/sources/test": {
+      "post": {
+        "operationId": "test_connection_api_v1_businesses__business_id__sources_test_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "business_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Business Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectionFields"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Test Connection",
+        "tags": [
+          "sources"
+        ]
+      }
+    },
+    "/api/v1/businesses/{business_id}/sources/{source_id}/sync": {
+      "post": {
+        "operationId": "sync_connection_api_v1_businesses__business_id__sources__source_id__sync_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "business_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Business Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sync Connection",
+        "tags": [
+          "sources"
         ]
       }
     },

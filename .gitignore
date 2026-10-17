@@ -36,3 +36,4 @@ npm-debug.log*
 .idea/
 services/api/.env.live
 services/api/.env.supabase
+services/api/.env.demo-source

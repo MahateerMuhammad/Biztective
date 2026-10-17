@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     )
     sheets_bridge_token: SecretStr | None = Field(default=None, min_length=32, max_length=200)
 
+    # Read-only business-database sources. Hosts listed here bypass the private-address block.
+    source_db_allowed_hosts: str = Field(default="", max_length=2000)
+    # "disable" is accepted only in the test environment (validated below).
+    source_db_sslmode: Literal["verify-full", "require", "disable"] = "verify-full"
+
     @field_validator("database_url")
     @classmethod
     def _psycopg_driver(cls, value: SecretStr) -> SecretStr:
@@ -77,6 +82,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _production_rules(self) -> Settings:
+        if self.source_db_sslmode == "disable" and self.environment != "test":
+            raise ValueError("SOURCE_DB_SSLMODE=disable is allowed only in the test environment")
         if self.environment == "production" and not self.frontend_origin.startswith("https://"):
             raise ValueError("FRONTEND_ORIGIN must use https in production")
         return self

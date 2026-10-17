@@ -793,6 +793,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/businesses/{business_id}/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Connections */
+        get: operations["list_connections_api_v1_businesses__business_id__sources_get"];
+        put?: never;
+        /** Create Connection */
+        post: operations["create_connection_api_v1_businesses__business_id__sources_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/businesses/{business_id}/sources/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Connection */
+        post: operations["test_connection_api_v1_businesses__business_id__sources_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/businesses/{business_id}/sources/{source_id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sync Connection */
+        post: operations["sync_connection_api_v1_businesses__business_id__sources__source_id__sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/healthz": {
         parameters: {
             query?: never;
@@ -930,6 +982,96 @@ export interface components {
             currency?: string | null;
             /** Timezone */
             timezone?: string | null;
+        };
+        /** ConnectionCreate */
+        ConnectionCreate: {
+            /** Database */
+            database: string;
+            /** Host */
+            host: string;
+            /**
+             * Password
+             * Format: password
+             */
+            password: string;
+            /**
+             * Port
+             * @default 5432
+             */
+            port: number;
+            /**
+             * Schema
+             * @default public
+             */
+            schema: string;
+            tables: components["schemas"]["SourceTables"];
+            /** Username */
+            username: string;
+        };
+        /** ConnectionFields */
+        ConnectionFields: {
+            /** Database */
+            database: string;
+            /** Host */
+            host: string;
+            /**
+             * Password
+             * Format: password
+             */
+            password: string;
+            /**
+             * Port
+             * @default 5432
+             */
+            port: number;
+            /**
+             * Schema
+             * @default public
+             */
+            schema: string;
+            /** Username */
+            username: string;
+        };
+        /** ConnectionOut */
+        ConnectionOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Database */
+            database: string;
+            /** Host */
+            host: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Last Dataset Id */
+            last_dataset_id: string | null;
+            /** Last Sync At */
+            last_sync_at: string | null;
+            /** Last Sync Error */
+            last_sync_error: string | null;
+            /** Last Sync Status */
+            last_sync_status: ("succeeded" | "failed") | null;
+            /** Port */
+            port: number;
+            /** Schema Name */
+            schema_name: string;
+            /** Table Customers */
+            table_customers: string;
+            /** Table Orders */
+            table_orders: string;
+            /** Table Products */
+            table_products: string;
+            /** Table Returns */
+            table_returns: string;
+            /** Username */
+            username: string;
         };
         /** Constraints */
         Constraints: {
@@ -1278,6 +1420,17 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** SourceTables */
+        SourceTables: {
+            /** Customers */
+            customers: string;
+            /** Orders */
+            orders: string;
+            /** Products */
+            products: string;
+            /** Returns */
+            returns: string;
+        };
         /** StartInvestigation */
         StartInvestigation: {
             /**
@@ -1290,6 +1443,31 @@ export interface components {
         StatusOut: {
             /** Status */
             status: string;
+        };
+        /** SyncRequest */
+        SyncRequest: {
+            /**
+             * Password
+             * Format: password
+             */
+            password: string;
+        };
+        /** SyncResult */
+        SyncResult: {
+            /** Dataset Id */
+            dataset_id: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "created" | "unchanged";
+        };
+        /** TestResult */
+        TestResult: {
+            /** Ok */
+            ok: boolean;
+            /** Tables */
+            tables: string[];
         };
         /** UserOut */
         UserOut: {
@@ -3051,6 +3229,143 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_connections_api_v1_businesses__business_id__sources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_connection_api_v1_businesses__business_id__sources_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_connection_api_v1_businesses__business_id__sources_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectionFields"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_connection_api_v1_businesses__business_id__sources__source_id__sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncResult"];
                 };
             };
             /** @description Validation Error */
