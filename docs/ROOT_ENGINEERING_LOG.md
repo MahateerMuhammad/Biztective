@@ -1482,5 +1482,5 @@ Every Phase 6 objective listed above is implemented and covered by the tests in 
   - **Not done:** manual screen-reader testing (NVDA/VoiceOver); browsers other than Chromium; production performance.
   - **Live-run side effects:** every real run appends rows to the owner's sheet.
   - **Earlier open item:** the Phase 8 run-1 independent-read failure remains unexplained. The newly found redirect and HTML error behaviour is a likely cause, but it is not proven.
-- **Commit hash and GitHub push status:** Appended below after commit.
+- **Commit hash and GitHub push status:** `b82d45c9913e61add3ec3af4df000c845ff430c9`, pushed to `main` without force; `git ls-remote origin refs/heads/main` matched `git rev-parse HEAD`.
 - **Next-phase dependencies:** Phase 10 (baseline 13, deployment and demo readiness). Do not begin it in this session.
