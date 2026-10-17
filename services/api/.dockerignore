@@ -1,0 +1,28 @@
+# Secrets and environment files (never bake into image; R-15)
+.env
+.env.*
+!.env.example
+
+# Virtual environments and caches
+.venv
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+.coverage.*
+benchmark.jsonl
+openapi.json
+
+# Test suite and external non-runtime integrations
+tests/
+integrations/apps_script/
+
+# Git and documentation
+.git/
+.gitignore
+*.md
+!README.md

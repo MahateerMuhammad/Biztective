@@ -1,0 +1,115 @@
+name: Container Build, Test & Publish
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/api/Dockerfile"
+      - "services/api/.dockerignore"
+      - "services/api/docker-entrypoint.sh"
+      - "apps/web/Dockerfile"
+      - "apps/web/.dockerignore"
+      - "apps/web/src/proxy.ts"
+      - ".github/workflows/deploy-images.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy-images-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api-image:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build production backend image
+        run: |
+          docker build \
+            -t ttl.sh/root2-mahateer-api-1.0.0:24h \
+            -t ttl.sh/root2-mahateer-api-1.0.1:24h \
+            services/api
+      - name: Validate backend container security and runtime behavior
+        run: |
+          # 1. Non-root user check (UID 10001)
+          UID_VAL="$(docker run --rm --entrypoint id ttl.sh/root2-mahateer-api-1.0.0:24h -u)"
+          test "$UID_VAL" = "10001"
+
+          # 2. No embedded .env secrets inside image
+          docker run --rm --entrypoint sh ttl.sh/root2-mahateer-api-1.0.0:24h -c 'test ! -f /app/.env && test ! -f /app/.env.live && test ! -f /app/.env.supabase'
+
+          # 3. Fail-closed on missing required environment variables
+          if docker run --rm ttl.sh/root2-mahateer-api-1.0.0:24h >/dev/null 2>&1; then
+            echo "Expected container to fail when DATABASE_URL is missing"
+            exit 1
+          fi
+
+          # 4. Production startup, healthz probe, and graceful SIGTERM shutdown
+          TEST_SECRET="$(openssl rand -hex 24)"
+          CID="$(docker run -d -p 18000:8000 \
+            -e ENVIRONMENT=production \
+            -e RUN_MIGRATIONS=0 \
+            -e WORKER_ENABLED=false \
+            -e DATABASE_URL=postgresql+psycopg://root_app:placeholder@127.0.0.1:5432/root \
+            -e SESSION_SECRET="$TEST_SECRET" \
+            -e FRONTEND_ORIGIN=https://example.alternatefutures.ai \
+            ttl.sh/root2-mahateer-api-1.0.0:24h)"
+          trap 'docker rm -f "$CID" >/dev/null 2>&1 || true' EXIT
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18000/api/v1/healthz | grep -q '"ok"'; then
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:18000/api/v1/healthz | grep -q '"ok"'
+          docker stop --time 10 "$CID"
+      - name: Push backend images
+        run: |
+          docker push ttl.sh/root2-mahateer-api-1.0.0:24h
+          docker push ttl.sh/root2-mahateer-api-1.0.1:24h
+          docker inspect --format='{{index .RepoDigests 0}}' ttl.sh/root2-mahateer-api-1.0.0:24h
+
+  web-image:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build production frontend image
+        run: |
+          docker build \
+            -t ttl.sh/root2-mahateer-web-1.0.0:24h \
+            -t ttl.sh/root2-mahateer-web-1.0.1:24h \
+            apps/web
+      - name: Validate frontend container security and runtime behavior
+        run: |
+          # 1. Non-root user check (UID 10001)
+          UID_VAL="$(docker run --rm --entrypoint id ttl.sh/root2-mahateer-web-1.0.0:24h -u)"
+          test "$UID_VAL" = "10001"
+
+          # 2. No embedded .env secrets inside image
+          docker run --rm --entrypoint sh ttl.sh/root2-mahateer-web-1.0.0:24h -c 'test ! -f /app/.env && test ! -f /app/.env.local'
+
+          # 3. Production startup, /login health probe, security headers, and graceful SIGTERM shutdown
+          CID="$(docker run -d -p 13000:3000 \
+            -e BACKEND_URL=http://127.0.0.1:18000 \
+            ttl.sh/root2-mahateer-web-1.0.0:24h)"
+          trap 'docker rm -f "$CID" >/dev/null 2>&1 || true' EXIT
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:13000/login >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          HEADERS="$(curl -fsSI http://127.0.0.1:13000/login)"
+          echo "$HEADERS" | grep -iq "content-security-policy:"
+          echo "$HEADERS" | grep -iq "x-frame-options: DENY"
+          echo "$HEADERS" | grep -iq "x-content-type-options: nosniff"
+          docker stop --time 10 "$CID"
+      - name: Push frontend images
+        run: |
+          docker push ttl.sh/root2-mahateer-web-1.0.0:24h
+          docker push ttl.sh/root2-mahateer-web-1.0.1:24h
+          docker inspect --format='{{index .RepoDigests 0}}' ttl.sh/root2-mahateer-web-1.0.0:24h
+

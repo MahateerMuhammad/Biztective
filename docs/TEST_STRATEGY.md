@@ -29,10 +29,13 @@
 
 - **Local:** Docker Compose Postgres, `uv run pytest`, `npm test`, `npx playwright test`.
 - **CI:** GitHub Actions `services: postgres` (same major version as production). Migrations run as `root_owner` and tests run as `root_app`.
+- **Production / Remote smoke (*Amended by AMD-22*):** `apps/web/playwright.config.ts` supports `PLAYWRIGHT_REMOTE_URL` (e.g. `https://<slug>-app.alternatefutures.ai`) to point Playwright browser smoke tests (T-53) directly at the deployed Alternate Futures public URL without starting local web/API servers.
 - **Test data:** factory functions and the generator (§6). No production data in tests.
 - **LLM in CI:** a deterministic fake provider (recorded responses plus adversarial fixtures). Real-provider runs are manual (Phase 7 AC-7.1) and recorded.
 
 ## 4. Quality gates (CI must be green to merge or push to `main`)
+
+> **Amended by AMD-22 (Phase 11):** T-53 production deployment smoke and rollback verification run against the live Alternate Futures deployment (`https://<slug>-app.alternatefutures.ai` and `https://<slug>-api.alternatefutures.ai`), including `/healthz`, `/readyz`, TLS/security headers, authentication (`__Host-` cookies via runtime proxy), dataset upload, investigation + HITL clarification, recovery plan approval, Google Sheets execution verification, and Playwright remote browser verification via `PLAYWRIGHT_REMOTE_URL`.
 
 > **Amended by AMD-21 (Phase 10):** CI enforces separate ≥95% coverage gates for `app/auth/`, `app/tenancy/`, `app/analytics/`, `app/investigation/verification.py`, `app/investigation/critic.py`, `app/recovery/`, and `app/actions/` (the implemented integrations and executor). The dependency audit gate fails closed on registry errors and malformed reports. Performance tests include 20 concurrent authenticated reads and an exactly 500,000-line uploaded dataset; measurements and limitations are recorded in the Phase 10 engineering log. Live external tests require explicit authorization of their destination and writes.
 

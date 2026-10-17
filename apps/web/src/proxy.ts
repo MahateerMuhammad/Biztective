@@ -21,12 +21,33 @@ function contentSecurityPolicy(nonce: string): string {
   ].join("; ");
 }
 
+function backendOrigin(): string {
+  const value = process.env.BACKEND_URL;
+  if (!value) {
+    throw new Error("BACKEND_URL must be set (e.g. http://127.0.0.1:8000)");
+  }
+  const url = new URL(value);
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("BACKEND_URL must be an http(s) URL");
+  }
+  return url.origin;
+}
+
 /**
- * Per-request CSP nonce, plus an optimistic redirect for visitors without a session cookie.
- * The backend remains the authority: pages re-validate the session on every render.
+ * Runtime /api/v1/* rewrite to BACKEND_URL (so container runtime env overrides build-time
+ * routes-manifest), per-request CSP nonce, plus an optimistic redirect for visitors without
+ * a session cookie. The backend remains the authority: pages re-validate the session on every render.
  */
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  if (pathname.startsWith("/api/v1/")) {
+    return NextResponse.rewrite(
+      new URL(`${pathname}${request.nextUrl.search}`, backendOrigin()),
+    );
+  }
+  if (pathname.startsWith("/api/")) {
+    return NextResponse.next();
+  }
   const hasSessionCookie = SESSION_COOKIE_NAMES.some((name) => request.cookies.has(name));
   if (!hasSessionCookie && !PUBLIC_PATHS.has(pathname)) {
     return NextResponse.redirect(new URL("/login", request.url));
@@ -45,7 +66,7 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     {
-      source: "/((?!api|_next/static|_next/image|favicon.ico).*)",
+      source: "/((?!_next/static|_next/image|favicon.ico).*)",
       missing: [
         { type: "header", key: "next-router-prefetch" },
         { type: "header", key: "purpose", value: "prefetch" },

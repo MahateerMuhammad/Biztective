@@ -622,36 +622,59 @@ A dependency enters only in the phase that first uses it (AGENTS.md R-8).
 
 ## 14. Deployment architecture and rollback
 
+> *Amended by AMD-22 (Phase 11):* Production runs on **Alternate Futures** (`Alternate Clouds` via `@alternatefutures/acc`) as two non-root (`UID 10001`) multi-stage OCI containers backed by external managed PostgreSQL with TLS (`sslmode=require`), replacing the baseline Vercel + Railway topology.
+
 ### 14.1 Topology
 
 | Environment | Frontend | Backend | Database |
 |---|---|---|---|
 | local | `next dev` | `uvicorn --reload` | Docker Compose Postgres |
 | CI | built and served for Playwright | uvicorn | GitHub Actions Postgres service |
-| production | Vercel project (root `frontend/`) | Railway service (root `backend/`, 1 instance) | Railway managed PostgreSQL (daily backups) |
+| production (Amended by AMD-22) | Alternate Futures container service (`apps/web/Dockerfile`, port `3000`, `https://<slug>-app.alternatefutures.ai`) | Alternate Futures container service (`services/api/Dockerfile`, port `8000`, 1 instance, `https://<slug>-api.alternatefutures.ai`) | External managed PostgreSQL (`sslmode=require`, separate `root_owner` migration role and `root_app` runtime role) |
 
-Render (web service + managed Postgres) is the documented equivalent if Railway is unavailable. The env var names are the same.
+```
+[Browser]
+   │ HTTPS (same-origin requests + __Host-root_session / __Host-root_csrf cookies)
+   ▼
+[Alternate Futures Frontend Container: Next.js 16 standalone (port 3000, UID 10001)]
+   │ Runtime proxy rewrite (/api/v1/:path* via apps/web/src/proxy.ts → BACKEND_URL)
+   ▼
+[Alternate Futures Backend Container: FastAPI + in-process worker + LangGraph (port 8000, UID 10001, 1 worker)]
+   ├──► [Managed PostgreSQL (sslmode=require)]
+   │       ├── public schema (RLS enforced via root_app; migrations via root_owner)
+   │       └── langgraph schema (checkpoints, checkpoint_blobs, checkpoint_writes)
+   ├──► [LLM Provider API (Groq / Anthropic over HTTPS)]
+   └──► [Google Sheets REST API / Apps Script Bridge over HTTPS]
+```
 
-### 14.2 Configuration
+### 14.2 Container security, runtime settings & configuration
 
-Backend env: `DATABASE_URL`, `DATABASE_URL_MIGRATIONS` (owner role), `SESSION_SECRET`, `INTEGRATION_ENCRYPTION_KEY`, `INTEGRATION_ENCRYPTION_KEY_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON`, `LLM_PROVIDER`, `LLM_MODEL`, `LLM_API_KEY`, `LLM_MAX_CALLS`, `LLM_MAX_TOKENS`, `FRONTEND_ORIGIN`, `WORKER_CONCURRENCY`, `LOG_LEVEL`, `ENVIRONMENT`. Frontend env: `BACKEND_URL` (server-only, used by rewrites). No secret is ever prefixed `NEXT_PUBLIC_`.
+- **Non-root execution:** Both `services/api/Dockerfile` (Python 3.13 slim + `uv sync --frozen --no-dev`) and `apps/web/Dockerfile` (Node 24 Alpine + `next build` standalone output) run as unprivileged user `rootapp` (`UID 10001`, `GID 10001`).
+- **Single-worker backend process:** The backend container runs `uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1 --proxy-headers --forwarded-allow-ips=*`. Keeping `--workers 1` preserves the single-instance contract for the in-process `SEC-20` session token bucket (`300 req/min`) and coordinates the embedded PostgreSQL job worker (`FOR UPDATE SKIP LOCKED` leases + per-thread advisory locks).
+- **Health and readiness probes:** Container `HEALTHCHECK` and Alternate Futures routing probe `/healthz` (process liveness) and `/readyz` (verifies database connectivity, confirms runtime role is `NOSUPERUSER` and `NOBYPASSRLS` with RLS active per `AMD-3`, and checks migration head alignment).
+- **Migration entrypoint:** When `RUN_MIGRATIONS=1` is set on the backend container (or invoked as a pre-deploy step), `services/api/scripts/entrypoint.sh` runs `alembic upgrade head` using `DATABASE_URL_MIGRATIONS` (`root_owner`) before starting Uvicorn under `DATABASE_URL` (`root_app`).
+- **Environment variables:**
+  - Backend env (injected at runtime via `acc services env`, never baked into images): `ENVIRONMENT=production`, `DATABASE_URL` (`root_app`, `sslmode=require`), `DATABASE_URL_MIGRATIONS` (`root_owner`, `sslmode=require`), `SESSION_SECRET`, `INTEGRATION_ENCRYPTION_KEY`, `INTEGRATION_ENCRYPTION_KEY_ID`, `LLM_PROVIDER`, `GROQ_API_KEY` / `ANTHROPIC_API_KEY`, `GROQ_MODEL` / `ANTHROPIC_MODEL`, `SHEETS_BRIDGE_URL`, `SHEETS_BRIDGE_TOKEN` (or `GOOGLE_SERVICE_ACCOUNT_JSON`), `FRONTEND_ORIGIN` (`https://<slug>-app.alternatefutures.ai`), `LOG_LEVEL`.
+  - Frontend env: `BACKEND_URL` (`https://<slug>-api.alternatefutures.ai`, server-only runtime variable read by `apps/web/src/proxy.ts`). No secret is ever prefixed `NEXT_PUBLIC_`.
 
 ### 14.3 Release process
 
 1. CI is green on `main`.
-2. Pre-deploy: `pg_dump` snapshot (or a platform backup trigger) → `alembic upgrade head` using the migration role.
-3. Deploy the backend and wait for `/readyz`.
-4. Deploy the frontend.
-5. Smoke test (T-53).
+2. Build and push immutable versioned container images (e.g. `:v1.0.0` or `:sha-<commit>`; never `:latest` or `:main`, which Alternate Clouds caches/refuses on image updates).
+3. Pre-deploy database backup / snapshot → run `alembic upgrade head` using `DATABASE_URL_MIGRATIONS` (`root_owner`).
+4. Deploy the backend container on Alternate Futures (`acc services deploy <api-service-id> --image <repo>:<tag>`), wait for `/healthz` and `/readyz` (`200 OK`).
+5. Deploy the frontend container on Alternate Futures (`acc services deploy <web-service-id> --image <repo>:<tag>`).
+6. Run production smoke and E2E verification against the public URL (T-53).
 
-Migrations follow **expand → migrate → contract**: a release only adds compatible schema, and destructive changes ship one release later. The previous backend build therefore runs against the new schema.
+Migrations follow **expand → migrate → contract** (`R-14`): a release only adds backward-compatible schema changes, and destructive changes ship in a subsequent release. The previous backend image therefore remains runnable against the migrated schema.
 
-### 14.4 Rollback
+### 14.4 Rollback and operational recovery
 
-- **Application:** redeploy the previous Railway deployment and Vercel deployment (instant rollback). No DB downgrade is needed because of expand/contract.
-- **Data emergency:** restore the pre-deploy snapshot into a new database, switch `DATABASE_URL`, and verify readiness.
-- **In-flight work:** jobs are lease-based, so restarts are safe. LangGraph checkpoints remain compatible because state schema changes are additive only. A breaking graph change needs a new graph version and lets old investigations finish on the old version (`investigations.graph_version`).
-- Rollback is rehearsed in Phase 13 (AC-13.2).
+- **Application image rollback:** Redeploy the previous known-good immutable image tag on Alternate Futures via `acc services deploy <service-id> --image <repo>:<previous-tag>` and verify `/healthz` and `/readyz`. Because Alternate Clouds caches mutable tags (`:latest`, `:main`), every release records its exact version tag and image digest in the deployment manifest/log.
+- **Database migration considerations:** Rolling back an application container image does **not** automatically reverse Alembic migrations. Because migrations strictly follow expand → migrate → contract, the previous application image continues operating safely against the expanded schema. If an emergency schema or data rollback is ever required, restore the pre-deploy database snapshot into a fresh database instance, update `DATABASE_URL` / `DATABASE_URL_MIGRATIONS` via `acc services env`, and verify `/readyz`.
+- **In-flight investigations and recovery plans:** Jobs in `jobs` are lease-based (`lease_expires_at`) with fenced attempt counters (`AMD-21`). If a backend container restarts or rolls back mid-run, expired leases are reclaimed by the new container's worker and LangGraph execution resumes deterministically from the latest PostgreSQL checkpoint (`langgraph.checkpoints`) under the per-thread advisory lock (`AMD-13`, `AMD-17`). Clarifications (`awaiting_human`) and recovery approvals (`awaiting_decision`) are durable in PostgreSQL and survive container restarts unchanged.
+- **External action reconciliation:** If a container restarts or rolls back during an `execute_action` Google Sheets write, the new worker closes the stale `started` attempt as `interrupted` and runs read-back reconciliation against the destination spreadsheet before attempting any write (`AMD-18`, `AMD-21`). Rows whose idempotency keys (`<action_id hex>-<n>`) are already present are not re-appended; any ambiguous or mismatched state transitions to `manual_review` rather than risking duplicate external effects.
+- Rollback is rehearsed in Phase 11 (baseline Phase 13, AC-13.2 / T-53).
 
 ## 15. Architecture decision records
 
@@ -683,7 +706,7 @@ Migrations follow **expand → migrate → contract**: a release only adds compa
 *Decision:* the graph can only *propose* actions. Execution is a separate job triggered solely by an owner approval of a specific payload hash, with authorization re-checked before every external call. *Consequences:* LLM output can never cause a side effect directly, and rejected actions have no execution path.
 
 **ADR-010 — Server-side sessions through a same-origin proxy.**
-*Decision:* the backend issues an opaque session cookie (HttpOnly, Secure, SameSite=Lax). The frontend proxies `/api/*` to the backend with Next.js rewrites, so cookies are first-party. *Consequences:* instant revocation, no tokens in JS, CSRF still mitigated (SEC-03). *Rejected:* JWT in localStorage (XSS exposure, no revocation).
+*Decision:* the backend issues an opaque session cookie (HttpOnly, Secure, SameSite=Lax). The frontend proxies `/api/*` to the backend with Next.js rewrites, so cookies are first-party. *Amended by AMD-22:* In containerized deployments on Alternate Futures, `apps/web/src/proxy.ts` performs runtime `/api/v1/:path*` rewrites using the container's runtime `BACKEND_URL` environment variable so the same prebuilt image works across environments without baking the backend URL at build time. *Consequences:* instant revocation, no tokens in JS, CSRF still mitigated (SEC-03). *Rejected:* JWT in localStorage (XSS exposure, no revocation).
 
 **ADR-011 — Tenant isolation with application scoping plus Postgres RLS.**
 *Decision:* explicit `business_id` filters in repositories and RLS policies keyed on a transaction-local setting, with the app connecting as a non-owner role. *Consequences:* defence in depth against IDOR and query bugs.

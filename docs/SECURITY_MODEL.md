@@ -155,6 +155,8 @@ Backend responses and the Next.js `headers()` set:
 
 TLS is terminated by Vercel and Railway. Database connections use `sslmode=require` in production.
 
+> *Amended by AMD-22 (Phase 11):* In production on **Alternate Futures**, TLS is terminated at the Alternate Futures ingress (`https://<slug>-app.alternatefutures.ai` and `https://<slug>-api.alternatefutures.ai`), and both frontend and backend containers run as non-root user `rootapp` (`UID 10001`). `apps/web/src/proxy.ts` proxies `/api/v1/:path*` to the runtime `BACKEND_URL` so `__Host-root_session` and `__Host-root_csrf` cookies remain first-party (`Secure; HttpOnly; SameSite=Lax; Path=/`) on the public HTTPS frontend origin, while backend `FRONTEND_ORIGIN` enforces strict CORS and CSRF `Origin` checks (`SEC-03`, `SEC-25`). External PostgreSQL connections enforce `sslmode=require` with `root_owner` (`DATABASE_URL_MIGRATIONS`) isolated from the runtime `root_app` role (`DATABASE_URL`).
+
 ## 8. Threat model (STRIDE)
 
 | # | Threat | Boundary | STRIDE | Control(s) | Test |
@@ -224,13 +226,15 @@ Data in tenants' Google Sheets and Slack channels belongs to the tenant and is n
 
 ## 11. Secrets management
 
+> *Amended by AMD-22 (Phase 11):* Production runtime secrets (`DATABASE_URL`, `DATABASE_URL_MIGRATIONS`, `SESSION_SECRET`, `INTEGRATION_ENCRYPTION_KEY`, `GROQ_API_KEY` / `ANTHROPIC_API_KEY`, `SHEETS_BRIDGE_URL`, `SHEETS_BRIDGE_TOKEN` / `GOOGLE_SERVICE_ACCOUNT_JSON`) are injected at container runtime via Alternate Futures service environment configuration (`acc services env`) and are never baked into Docker images or exposed via `NEXT_PUBLIC_`.
+
 | Secret | Location | Rotation |
 |---|---|---|
-| `SESSION_SECRET` | Railway env | Rotation invalidates CSRF tokens. Sessions remain (token hashes are independent) |
-| `INTEGRATION_ENCRYPTION_KEY` (+ `_ID`) | Railway env | New key ID. Old ciphertexts are decrypted with the old key and lazily re-encrypted. Old keys are kept in `INTEGRATION_ENCRYPTION_KEYS_OLD` until re-encryption completes |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | Railway env (base64) | Create a new key in GCP, deploy, then delete the old key |
-| `LLM_API_KEY` | Railway env | Provider console |
-| DB credentials | Railway-managed `DATABASE_URL` (app role) and `DATABASE_URL_MIGRATIONS` (owner role) | Platform rotation |
+| `SESSION_SECRET` | Railway env (Alternate Futures `acc services env` per AMD-22) | Rotation invalidates CSRF tokens. Sessions remain (token hashes are independent) |
+| `INTEGRATION_ENCRYPTION_KEY` (+ `_ID`) | Railway env (Alternate Futures `acc services env` per AMD-22) | New key ID. Old ciphertexts are decrypted with the old key and lazily re-encrypted. Old keys are kept in `INTEGRATION_ENCRYPTION_KEYS_OLD` until re-encryption completes |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` / `SHEETS_BRIDGE_TOKEN` | Railway env (Alternate Futures `acc services env` per AMD-22) | Create a new key in GCP or rotate bridge token, deploy, then revoke the old credential |
+| `LLM_API_KEY` (`GROQ_API_KEY` / `ANTHROPIC_API_KEY`) | Railway env (Alternate Futures `acc services env` per AMD-22) | Provider console |
+| DB credentials | Managed PostgreSQL `DATABASE_URL` (`root_app` role) and `DATABASE_URL_MIGRATIONS` (`root_owner` role) with `sslmode=require` | Platform rotation |
 
 Rules: `.env` files are git-ignored. `.env.example` contains names only. No secret appears in the frontend bundle or uses a `NEXT_PUBLIC_` prefix. CI uses GitHub encrypted secrets only for deployment jobs, never for pull requests from forks.
 

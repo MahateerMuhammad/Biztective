@@ -35,3 +35,4 @@ npm-debug.log*
 .DS_Store
 .idea/
 services/api/.env.live
+services/api/.env.supabase
