@@ -11,7 +11,7 @@ test.beforeAll(() => {
 test("unauthenticated visitors are sent to sign-in", async ({ page }) => {
   await page.goto("/");
   await expect(page).toHaveURL(/\/login$/);
-  await expect(page.getByRole("heading", { name: "Sign in to ROOT" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
 
   await page.goto("/businesses/00000000-0000-0000-0000-000000000000");
   await expect(page).toHaveURL(/\/login$/);
@@ -29,7 +29,7 @@ test("pages are served with a nonce-based CSP", async ({ page }) => {
 test("wrong password shows an error without signing in", async ({ page }) => {
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(`${password}-wrong`);
+  await page.getByLabel("Password", { exact: true }).fill(`${password}-wrong`);
   await page.getByRole("button", { name: "Sign in" }).click();
   // Next.js also renders an (empty) route-announcer alert, so match ours by its text.
   await expect(
@@ -46,19 +46,21 @@ test("sign in, see the business shell, sign out", async ({ page, context }) => {
 
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(password);
+  await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
 
   await expect(page).toHaveURL(/\/businesses\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   await expect(page.getByTestId("current-user")).not.toBeEmpty();
   await expect(page.getByRole("heading", { name: "Business health" })).toBeVisible();
-  const sections = page.getByRole("navigation", { name: "Sections" });
+  const sections = page.getByRole("navigation", { name: "Main" });
   for (const name of ["Business health", "Investigations", "Decision center", "Data"]) {
     await expect(sections.getByRole("link", { name })).toBeVisible();
   }
   await expect(sections.getByRole("link", { name: "Business health" })).toHaveAttribute("aria-current", "page");
+  await page.getByTestId("current-user").click();
   await expect(page.getByText(/^Owner · /)).toBeVisible();
+  await page.keyboard.press("Escape");
 
   // The session cookie is HttpOnly: never readable from page scripts.
   const cookies = await context.cookies();
@@ -72,7 +74,8 @@ test("sign in, see the business shell, sign out", async ({ page, context }) => {
   await expect(page.getByText("This page could not be found.")).toBeVisible();
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.getByTestId("current-user").click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/login$/);
   await page.goto("/");
   await expect(page).toHaveURL(/\/login$/);

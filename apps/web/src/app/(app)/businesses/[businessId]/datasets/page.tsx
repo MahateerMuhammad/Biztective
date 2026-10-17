@@ -2,10 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { EmptyState, PageHeader, SectionCard, StatusChip, rowLinkClass, tableClass, tableWrap, tdClass, thClass, trClass } from "@/components/page";
 import { Pager, cursorParam } from "@/components/pager";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button";
 import { getBusiness, listDatasets } from "@/lib/api/server";
-import { formatCount } from "@/lib/format";
+import { formatCount, formatDate, formatDateTime } from "@/lib/format";
+import { datasetStatus } from "@/lib/status";
+import { Database } from "lucide-react";
 
 export const metadata: Metadata = { title: "Data" };
 
@@ -14,56 +17,57 @@ export default async function DatasetsPage({ params, searchParams }: PageProps<"
   const cursor = cursorParam((await searchParams).cursor);
   const [business, datasets] = await Promise.all([getBusiness(businessId), listDatasets(businessId, cursor)]);
   if (!business || !datasets) notFound();
+  const upload = business.role !== "viewer" ? `/businesses/${businessId}/datasets/new` : null;
   return (
     <div className="grid gap-6">
-      <h1 className="text-2xl font-semibold tracking-tight">Data</h1>
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            <h2 className="text-base font-semibold">Dataset versions</h2>
-          </CardTitle>
-          <CardDescription>Every upload is validated and kept as its own version.</CardDescription>
-          {business.role !== "viewer" ? (
-            <Link href={`/businesses/${businessId}/datasets/new`} className="text-sm font-medium underline-offset-4 hover:underline">
-              Upload dataset
-            </Link>
-          ) : null}
-        </CardHeader>
-        <CardContent className="overflow-x-auto">
-          {datasets.items.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No datasets yet.</p>
-          ) : (
-            <table className="w-full text-left text-sm">
-              <caption className="sr-only">Dataset versions</caption>
+      <PageHeader
+        title="Data"
+        subtitle="Every upload is checked and kept as its own version."
+        action={upload ? <Link href={upload} className={buttonVariants()}>Upload data</Link> : null}
+      />
+      <SectionCard>
+        {datasets.items.length === 0 ? (
+          <EmptyState icon={Database} title="No data yet" action={upload ? <Link href={upload} className={buttonVariants()}>Upload data</Link> : null}>
+            Upload your orders, products, customers and returns to get started.
+          </EmptyState>
+        ) : (
+          <div className={tableWrap} tabIndex={0} role="region" aria-label="Table, scrollable">
+            <table className={tableClass}>
+              <caption className="sr-only">Data versions, newest first</caption>
               <thead>
-                <tr className="border-b">
-                  <th scope="col" className="py-2 font-medium">Version</th>
-                  <th scope="col" className="py-2 font-medium">Status</th>
-                  <th scope="col" className="py-2 text-right font-medium">Order lines</th>
-                  <th scope="col" className="py-2 font-medium">Date range</th>
-                  <th scope="col" className="py-2 font-medium">Uploaded</th>
+                <tr>
+                  <th scope="col" className={thClass}>Version</th>
+                  <th scope="col" className={thClass}>Status</th>
+                  <th scope="col" className={`${thClass} text-right`}>Order lines</th>
+                  <th scope="col" className={thClass}>Covers</th>
+                  <th scope="col" className={thClass}>Uploaded</th>
                 </tr>
               </thead>
               <tbody>
-                {datasets.items.map((dataset) => (
-                  <tr key={dataset.id} className="border-b last:border-0">
-                    <td className="py-2">
-                      <Link href={`/businesses/${businessId}/datasets/${dataset.id}`} className="underline-offset-4 hover:underline">
-                        v{dataset.version}
-                      </Link>
-                    </td>
-                    <td className="py-2">{dataset.status.replaceAll("_", " ")}</td>
-                    <td className="py-2 text-right tabular-nums">{formatCount(dataset.orders_rows)}</td>
-                    <td className="py-2">{dataset.date_min && dataset.date_max ? `${dataset.date_min} – ${dataset.date_max}` : "—"}</td>
-                    <td className="py-2">{dataset.created_at.slice(0, 10)}</td>
-                  </tr>
-                ))}
+                {datasets.items.map((dataset) => {
+                  const status = datasetStatus(dataset.status);
+                  return (
+                    <tr key={dataset.id} className={trClass}>
+                      <td className={tdClass}>
+                        <Link href={`/businesses/${businessId}/datasets/${dataset.id}`} className={rowLinkClass}>
+                          Version {dataset.version}
+                        </Link>
+                      </td>
+                      <td className={tdClass}><StatusChip tone={status.tone}>{status.label}</StatusChip></td>
+                      <td className={`${tdClass} text-right tabular-nums`}>{formatCount(dataset.orders_rows)}</td>
+                      <td className={`${tdClass} whitespace-nowrap`}>
+                        {dataset.date_min && dataset.date_max ? `${formatDate(dataset.date_min)} – ${formatDate(dataset.date_max, true)}` : "—"}
+                      </td>
+                      <td className={`${tdClass} whitespace-nowrap`} title={formatDateTime(dataset.created_at)}>{formatDate(dataset.created_at, true)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
-          )}
-          <Pager path={`/businesses/${businessId}/datasets`} cursor={cursor} next={datasets.next_cursor ?? null} />
-        </CardContent>
-      </Card>
+          </div>
+        )}
+        <Pager path={`/businesses/${businessId}/datasets`} cursor={cursor} next={datasets.next_cursor ?? null} />
+      </SectionCard>
     </div>
   );
 }

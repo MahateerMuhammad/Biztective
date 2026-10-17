@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { KindBadge } from "@/components/kind-badge";
-import { Badge } from "@/components/ui/badge";
+import { PageHeader, StatusChip } from "@/components/page";
+import { formatDateTime } from "@/lib/format";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getEvidence } from "@/lib/api/server";
 
@@ -25,19 +26,19 @@ export default async function EvidencePage({ params }: PageProps<"/businesses/[b
   const sample = (Array.isArray(item.result.sample) ? item.result.sample : []) as SourceRow[];
   return (
     <div className="grid gap-6">
-      <div>
-        <h1 className="flex flex-wrap items-center gap-2 text-2xl font-semibold tracking-tight">
-          Evidence: {item.kind.replaceAll("_", " ")} <KindBadge kind="fact" />
-        </h1>
-        <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-          {item.intact ? (
-            <Badge className="border-action-foreground/30 bg-action text-action-foreground">Integrity verified</Badge>
-          ) : (
-            <Badge className="border-risk-foreground/30 bg-risk text-risk-foreground">Integrity check failed</Badge>
-          )}
-          Recorded {item.created_at.slice(0, 19).replace("T", " ")} · query version {item.query_version}
-        </p>
-      </div>
+      <PageHeader
+        title={
+          <span className="flex flex-wrap items-center gap-3">
+            Evidence: {item.kind.replaceAll("_", " ")} <KindBadge kind="fact" />
+          </span>
+        }
+        subtitle={
+          <span className="inline-flex flex-wrap items-center gap-2">
+            {item.intact ? <StatusChip tone="ok">Integrity verified</StatusChip> : <StatusChip tone="err">Integrity check failed</StatusChip>}
+            <span title={`Query version ${item.query_version}`}>Recorded {formatDateTime(item.created_at)}</span>
+          </span>
+        }
+      />
 
       <Card>
         <CardHeader>
@@ -48,7 +49,7 @@ export default async function EvidencePage({ params }: PageProps<"/businesses/[b
         </CardHeader>
         <CardContent className="overflow-x-auto">
           {facts ? (
-            <table className="w-full text-left text-sm">
+            <table className="w-full text-left text-[15px]">
               <caption className="sr-only">Facts in this evidence item</caption>
               <thead>
                 <tr className="border-b">
@@ -60,7 +61,7 @@ export default async function EvidencePage({ params }: PageProps<"/businesses/[b
               <tbody>
                 {Object.entries(facts).map(([name, f]) => (
                   <tr key={name} className="border-b last:border-0">
-                    <th scope="row" className="py-1.5 font-mono text-xs font-normal">
+                    <th scope="row" className="py-1.5 tabular-nums text-[13px] font-normal">
                       {name}
                     </th>
                     <td className="py-1.5 text-right tabular-nums">{text(f.value)}</td>
@@ -70,7 +71,7 @@ export default async function EvidencePage({ params }: PageProps<"/businesses/[b
               </tbody>
             </table>
           ) : (
-            <pre tabIndex={0} aria-label="Stored result" className="max-h-96 overflow-auto rounded-md bg-muted p-3 text-xs whitespace-pre-wrap break-all">
+            <pre tabIndex={0} aria-label="Stored result" className="max-h-96 overflow-auto rounded-md bg-muted p-3 text-[13px] whitespace-pre-wrap break-all">
               {JSON.stringify(item.result, null, 2)}
             </pre>
           )}
@@ -86,7 +87,7 @@ export default async function EvidencePage({ params }: PageProps<"/businesses/[b
             <CardDescription>The rows of your uploaded files that contribute most, with their file and line.</CardDescription>
           </CardHeader>
           <CardContent className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="w-full text-left text-[15px]">
               <caption className="sr-only">Contributing source records</caption>
               <thead>
                 <tr className="border-b">
@@ -102,7 +103,7 @@ export default async function EvidencePage({ params }: PageProps<"/businesses/[b
                   <tr key={`${r.file}-${r.source_row}`} className="border-b last:border-0">
                     <td className="py-1.5">{r.file}.csv</td>
                     <td className="py-1.5 text-right tabular-nums">{r.source_row}</td>
-                    <td className="py-1.5 font-mono text-xs">{r.key}</td>
+                    <td className="py-1.5 tabular-nums text-[13px]">{r.key}</td>
                     <td className="py-1.5 text-right tabular-nums">{r.amount}</td>
                     <td className="py-1.5">{r.detail ?? ""}</td>
                   </tr>
@@ -119,16 +120,16 @@ export default async function EvidencePage({ params }: PageProps<"/businesses/[b
             <h2 className="text-base font-semibold">How it was computed</h2>
           </CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-2 text-sm">
+        <CardContent className="grid gap-2 text-[15px]">
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
             <dt className="text-muted-foreground">Result hash</dt>
-            <dd className="font-mono text-xs break-all">{item.result_hash}</dd>
+            <dd className="tabular-nums text-[13px] break-all">{item.result_hash}</dd>
             <dt className="text-muted-foreground">Parameters hash</dt>
-            <dd className="font-mono text-xs break-all">{item.params_hash}</dd>
+            <dd className="tabular-nums text-[13px] break-all">{item.params_hash}</dd>
           </dl>
           <details>
             <summary className="cursor-pointer font-medium">Parameters</summary>
-            <pre tabIndex={0} aria-label="Query parameters" className="mt-2 max-h-64 overflow-auto rounded-md bg-muted p-3 text-xs whitespace-pre-wrap break-all">
+            <pre tabIndex={0} aria-label="Query parameters" className="mt-2 max-h-64 overflow-auto rounded-md bg-muted p-3 text-[13px] whitespace-pre-wrap break-all">
               {JSON.stringify(item.params, null, 2)}
             </pre>
           </details>

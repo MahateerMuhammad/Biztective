@@ -23,7 +23,7 @@ async function answerUntilDone(page: Page): Promise<number> {
   for (let i = 0; i < 6; i++) {
     const status = page.getByRole("status").first();
     await expect(status).not.toContainText(/Queued|investigating/, { timeout: 90_000 });
-    if (!(await page.getByRole("heading", { name: /ROOT needs your input/ }).isVisible())) break;
+    if (!(await page.getByRole("heading", { name: /Biztective needs your input/ }).isVisible())) break;
     if (answers === 0) {
       // Refresh while the workflow is suspended: the same question comes back, still answerable.
       const options = page.getByRole("radiogroup", { name: "Answer options" });
@@ -51,7 +51,7 @@ test("a first-time owner goes from data to a verified action", async ({ page }) 
   await expectAccessible(page, "dataset quality report");
 
   // 2. Business health: metrics, prioritized incidents, freshness, customers.
-  await page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: "Business health" }).click();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Business health" }).click();
   const incidents = page.getByRole("list", { name: "Incidents by priority" });
   await expect(incidents).toBeVisible({ timeout: 90_000 });
   await expect(page.getByText("Net revenue").first()).toBeVisible();

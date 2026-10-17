@@ -6,6 +6,17 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { postJson, resetCsrfToken } from "@/lib/api/client";
 
+/** Ends the session. Returns false when the server did not confirm it, so callers never pretend it worked. */
+export async function signOut(): Promise<boolean> {
+  try {
+    await postJson("/api/v1/auth/logout");
+  } catch {
+    return false;
+  }
+  resetCsrfToken();
+  return true;
+}
+
 export function LogoutButton() {
   const router = useRouter();
   const [pending, setPending] = useState(false);
@@ -14,15 +25,12 @@ export function LogoutButton() {
   async function logout() {
     setPending(true);
     setFailed(false);
-    try {
-      await postJson("/api/v1/auth/logout");
-    } catch {
+    if (!(await signOut())) {
       // The session may still be valid, so do not pretend the sign-out succeeded.
       setFailed(true);
       setPending(false);
       return;
     }
-    resetCsrfToken();
     router.replace("/login");
     router.refresh();
   }

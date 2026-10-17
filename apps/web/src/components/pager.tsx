@@ -4,14 +4,14 @@ import Link from "next/link";
 export function Pager({ path, cursor, next }: { path: string; cursor?: string; next: string | null }) {
   if (!cursor && !next) return null;
   return (
-    <nav aria-label="Pagination" className="flex items-center gap-3 pt-3 text-sm">
+    <nav aria-label="Pagination" className="flex items-center gap-4 pt-3 text-[15px]">
       {cursor ? (
-        <Link href={path} className="font-medium underline-offset-4 hover:underline">
+        <Link href={path} className="inline-flex min-h-11 items-center font-medium underline-offset-4 hover:underline">
           ← First page
         </Link>
       ) : null}
       {next ? (
-        <Link href={`${path}?cursor=${encodeURIComponent(next)}`} className="font-medium underline-offset-4 hover:underline">
+        <Link href={`${path}?cursor=${encodeURIComponent(next)}`} className="inline-flex min-h-11 items-center font-medium underline-offset-4 hover:underline">
           Next page →
         </Link>
       ) : null}

@@ -22,15 +22,15 @@ function files(ordersHeader: string): Record<string, string> {
 async function signIn(page: Page) {
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(password);
+  await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/businesses\/[0-9a-f-]{36}$/);
 }
 
 async function uploadFiles(page: Page, content: Record<string, string>) {
-  await page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: "Data" }).click();
-  await page.getByRole("link", { name: "Upload dataset" }).click();
-  await expect(page.getByRole("heading", { name: "Upload dataset" })).toBeVisible();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Data" }).click();
+  await page.getByRole("link", { name: "Upload data" }).click();
+  await expect(page.getByRole("heading", { name: "Upload data" })).toBeVisible();
   for (const [kind, body] of Object.entries(content)) {
     const label = `${kind[0]!.toUpperCase()}${kind.slice(1)} (.csv)`;
     await page.getByLabel(label).setInputFiles({

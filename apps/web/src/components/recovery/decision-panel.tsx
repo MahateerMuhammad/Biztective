@@ -95,7 +95,7 @@ function Field({ id, label, children, help }: { id: string; label: string; child
     <div className="grid gap-1">
       <Label htmlFor={id}>{label}</Label>
       {children}
-      {help ? <p className="text-xs text-muted-foreground">{help}</p> : null}
+      {help ? <p className="text-[13px] text-muted-foreground">{help}</p> : null}
     </div>
   );
 }
@@ -193,13 +193,13 @@ export function DecisionPanel({ businessId, plan, role }: { businessId: string; 
             Approve version {awaiting.version}
           </h3>
           <p>
-            Content hash <span className="font-mono">{hashPrefix}…</span>. Your approval covers exactly this version; any later
-            change creates a new version that needs a new approval. Approving records your decision only: ROOT executes nothing.
+            Content hash <span className="tabular-nums">{hashPrefix}…</span>. Your approval covers exactly this version; any later
+            change creates a new version that needs a new approval. Approving records your decision only: Biztective executes nothing.
           </p>
           <ul className="list-disc pl-5" aria-label="Strategies you are approving">
             {chosen.map((s) => (
               <li key={s.id}>
-                {s.title} <span className="font-mono text-xs">({s.incident.key})</span> · actions: {s.action_types.join(", ")}
+                {s.title} <span className="tabular-nums text-[13px]">({s.incident.key})</span> · actions: {s.action_types.join(", ")}
               </li>
             ))}
           </ul>
@@ -210,7 +210,7 @@ export function DecisionPanel({ businessId, plan, role }: { businessId: string; 
           </p>
           <details>
             <summary>Exact plan content</summary>
-            <pre tabIndex={0} aria-label="Exact plan content" className="max-h-64 overflow-auto whitespace-pre-wrap break-all text-xs">{JSON.stringify(c, null, 2)}</pre>
+            <pre tabIndex={0} aria-label="Exact plan content" className="max-h-64 overflow-auto whitespace-pre-wrap break-all text-[13px]">{JSON.stringify(c, null, 2)}</pre>
           </details>
           <div className="flex gap-2">
             <Button type="button" onClick={() => submit("approve")} disabled={busy}>
@@ -237,7 +237,7 @@ export function DecisionPanel({ businessId, plan, role }: { businessId: string; 
               }}
             />
           </Field>
-          <p className="text-xs text-muted-foreground">Rejecting is final for this plan and has no effect outside ROOT.</p>
+          <p className="text-[13px] text-muted-foreground">Rejecting is final for this plan and has no effect outside Biztective.</p>
           <div>
             <Button type="submit" disabled={!hydrated || busy}>
               {busy ? "Rejecting…" : "Confirm rejection"}
@@ -280,7 +280,7 @@ export function DecisionPanel({ businessId, plan, role }: { businessId: string; 
                   onChange={() => changed(() => setAllowed((prev) => (prev.includes(a) ? prev.filter((x) => x !== a) : [...prev, a])))}
                 />
                 {plan.catalog.action_types[a].label}
-                {plan.catalog.action_types[a].risky ? <span className="text-xs font-medium">(external effect, opt-in)</span> : null}
+                {plan.catalog.action_types[a].risky ? <span className="text-[13px] font-medium">(external effect, opt-in)</span> : null}
               </label>
             ))}
           </fieldset>
@@ -306,12 +306,12 @@ export function DecisionPanel({ businessId, plan, role }: { businessId: string; 
                       checked={on}
                       onChange={() => changed(() => setSelected((prev) => (prev.includes(s.id) ? prev.filter((x) => x !== s.id) : [...prev, s.id])))}
                     />
-                    #{s.rank} {s.title} <span className="font-mono text-xs">({s.incident.key})</span>
+                    #{s.rank} {s.title} <span className="tabular-nums text-[13px]">({s.incident.key})</span>
                   </label>
                   {on
                     ? money.map(([k, a]) => (
                         <fieldset key={k} className="grid gap-1 sm:grid-cols-3">
-                          <legend className="text-xs">{a.label} ({c.currency})</legend>
+                          <legend className="text-[13px]">{a.label} ({c.currency})</legend>
                           {(["low", "mid", "high"] as const).map((sc) => {
                             const id = `cost-${s.rank}-${k}-${sc}`;
                             const value = costs[s.id]?.[k]?.[sc] ?? a[sc] ?? "";
@@ -341,7 +341,7 @@ export function DecisionPanel({ businessId, plan, role }: { businessId: string; 
                     <Field id={`targets-${s.rank}`} label="Customers to target (one ID per line)" help={`${s.targeting.eligible_customers} eligible customers.${s.discount ? ` Offer discount ${formatPercent(s.discount)}.` : ""}`}>
                       <textarea
                         id={`targets-${s.rank}`}
-                        className="min-h-20 rounded-md border bg-background p-2 font-mono text-xs"
+                        className="min-h-20 rounded-md border bg-background p-2 tabular-nums text-[13px]"
                         value={targets[s.id] ?? ""}
                         onChange={(e) => {
                           const v = e.target.value;

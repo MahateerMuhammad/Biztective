@@ -32,7 +32,7 @@ export { expect };
 export async function signIn(page: Page, who = email, secret = password) {
   await page.goto("/login");
   await page.getByLabel("Email").fill(who);
-  await page.getByLabel("Password").fill(secret);
+  await page.getByLabel("Password", { exact: true }).fill(secret);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/businesses\/[0-9a-f-]{36}$/);
   return page.url().replace(/^https?:\/\/[^/]+/, "");
@@ -61,8 +61,8 @@ export function generated(seed: number, scenario: string): Record<string, string
 }
 
 export async function upload(page: Page, files: Record<string, string>) {
-  await page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: "Data" }).click();
-  await page.getByRole("link", { name: "Upload dataset" }).click();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Data" }).click();
+  await page.getByRole("link", { name: "Upload data" }).click();
   for (const [kind, body] of Object.entries(files)) {
     await page.getByLabel(`${kind[0]!.toUpperCase()}${kind.slice(1)} (.csv)`).setInputFiles({
       name: `${kind}.csv`,

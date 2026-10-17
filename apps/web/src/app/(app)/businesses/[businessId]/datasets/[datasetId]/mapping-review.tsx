@@ -78,16 +78,16 @@ export function MappingReview({
     <form onSubmit={onSubmit} className="grid gap-6">
       {pending.map((file) => (
         <fieldset key={file.kind} className="grid gap-3">
-          <legend className="font-medium">{file.kind}.csv</legend>
+          <legend className="text-base font-semibold capitalize">{file.kind}.csv</legend>
           {pendingColumns(file.mapping).map((name) => {
             const column = file.mapping.columns[name];
             const id = `map-${file.kind}-${name}`;
             return (
               <div key={name} className="grid gap-1 sm:grid-cols-[14rem_1fr] sm:items-center">
-                <label htmlFor={id} className="text-sm">
-                  <span className="font-mono">{name}</span>
+                <label htmlFor={id} className="text-[15px]">
+                  <span className="tabular-nums">{name}</span>
                   {column?.required ? " (required)" : " (optional)"}
-                  <span className="block text-xs text-muted-foreground">
+                  <span className="block text-[13px] text-muted-foreground">
                     {column?.status === "ambiguous"
                       ? `Several columns could match: ${column.candidates.join(", ")}`
                       : `Proposed from header "${column?.source}"`}
@@ -95,7 +95,7 @@ export function MappingReview({
                 </label>
                 <select
                   id={id}
-                  className="h-9 rounded-md border bg-background px-2 text-sm"
+                  className="h-11 rounded-lg border border-input bg-background px-3 text-[15px]"
                   value={choices[file.kind]?.[name] ?? NOT_USED}
                   onChange={(event) =>
                     setChoices((prev) => ({

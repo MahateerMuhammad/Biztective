@@ -7,7 +7,6 @@ import { Progress } from "@/components/investigation/progress";
 import { ProofChain } from "@/components/investigation/proof-chain";
 import { QuestionForm } from "@/components/investigation/question-form";
 import { KindBadge } from "@/components/kind-badge";
-import { Badge } from "@/components/ui/badge";
 import { StartPlan } from "@/components/recovery/start-plan";
 import { VersionDiff } from "@/components/investigation/version-diff";
 import { Segments } from "@/components/segments";
@@ -15,14 +14,18 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { compareVersions, getBusiness, getInvestigation, listEvents, listPlans, listVersions } from "@/lib/api/server";
 import type { InvestigationDetail, InvestigationIncident, InvestigationStatus } from "@/lib/api/types";
-import { templateLabel } from "@/lib/format";
+import { formatDateTime, templateLabel } from "@/lib/format";
+import { planChip } from "@/lib/status";
+import { PageHeader, StatusChip } from "@/components/page";
+import { buttonVariants } from "@/components/ui/button";
+import { InfoTip } from "@/components/ui/info-tip";
 
 export const metadata: Metadata = { title: "Investigation" };
 
 const WORKING: InvestigationStatus[] = ["queued", "running"];
 const STATUS_TEXT: Record<InvestigationStatus, string> = {
   queued: "Queued…",
-  running: "ROOT is investigating…",
+  running: "Biztective is investigating…",
   awaiting_human: "Waiting for your answer",
   completed: "Completed",
   completed_no_incidents: "Completed: no significant incident",
@@ -39,11 +42,11 @@ function Incident({ incident, evidenceBase }: { incident: InvestigationIncident;
             <span className="text-muted-foreground tabular-nums">#{incident.rank}</span>
             {incident.metric_label}
             {incident.value ? ` in ${incident.dimension} “${incident.value}”` : " across the business"}
-            <Badge className="bg-muted uppercase">{incident.severity}</Badge>
+            <StatusChip tone={incident.severity === "medium" ? "warn" : incident.severity === "low" ? "idle" : "err"}>{incident.severity.replace(/^./, (c) => c.toUpperCase())}</StatusChip>
           </h3>
         </CardTitle>
       </CardHeader>
-      <CardContent className="grid gap-5 text-sm">
+      <CardContent className="grid gap-5 text-[15px]">
         <ProofChain incident={incident} evidenceBase={evidenceBase} />
         {incident.human_context.length > 0 ? (
           <div className="grid gap-1">
@@ -53,7 +56,7 @@ function Incident({ incident, evidenceBase }: { incident: InvestigationIncident;
             <ul className="grid gap-1">
               {incident.human_context.map((c) => (
                 <li key={c.human_input_id}>
-                  {c.answered_by.display_name ?? "A team member"} on {c.answered_at.slice(0, 16).replace("T", " ")}:{" "}
+                  {c.answered_by.display_name ?? "A team member"} on {formatDateTime(c.answered_at)}:{" "}
                   {c.option_label ?? "comment only"}
                   {c.free_text ? (
                     <span className="block whitespace-pre-wrap text-muted-foreground">“{c.free_text}”</span>
@@ -103,10 +106,10 @@ function Uncertainties({ investigation }: { investigation: InvestigationDetail }
         <CardTitle>
           <h2 className="text-base font-semibold">Unresolved uncertainties</h2>
         </CardTitle>
-        <CardDescription>ROOT does not guess. These points are open, and the conclusions above account for them.</CardDescription>
+        <CardDescription>Biztective does not guess. These points are open, and the conclusions above account for them.</CardDescription>
       </CardHeader>
       <CardContent>
-        <ul className="grid list-disc gap-1 pl-5 text-sm">
+        <ul className="grid list-disc gap-1 pl-5 text-[15px]">
           {items.map((i) => (
             <li key={i.key}>{i.text}</li>
           ))}
@@ -132,7 +135,7 @@ function Findings({ investigation }: { investigation: InvestigationDetail }) {
         </CardTitle>
         <CardDescription>{findings.label}</CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-2 text-sm">
+      <CardContent className="grid gap-2 text-[15px]">
         <p>
           <Segments segments={findings.rendered.summary} />
         </p>
@@ -191,28 +194,31 @@ export default async function InvestigationPage({
   return (
     <div className="grid gap-6">
       {working ? <AutoRefresh /> : null}
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <Link href={`/businesses/${businessId}/investigations`} className="text-sm underline-offset-4 hover:underline">
+      <PageHeader
+        back={
+          <Link href={`/businesses/${businessId}/investigations`} className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
             ← Investigations
           </Link>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight">Investigation workspace</h1>
-          <p className="mt-1 text-sm" role="status" aria-live="polite">
+        }
+        title="Investigation"
+        subtitle={
+          <span className="inline-flex flex-wrap items-center gap-x-1">
             {STATUS_TEXT[investigation.status]}
             {investigation.version ? ` · version ${investigation.version}` : ""}
-            {investigation.llm_mode === "deterministic" ? " · deterministic mode" : " · AI-assisted wording"}
-          </p>
-          {investigation.status === "failed" ? (
-            <p className="text-sm text-muted-foreground">Error: {investigation.error_code}</p>
-          ) : null}
-        </div>
-        <Link
-          href={`/businesses/${businessId}/datasets/${investigation.dataset_id}/analytics`}
-          className="text-sm underline-offset-4 hover:underline"
-        >
-          Source analytics
-        </Link>
-      </div>
+            <InfoTip label="How this was written">
+              {investigation.llm_mode === "deterministic"
+                ? "Written by fixed rules from the measured data."
+                : "The wording is AI-assisted. The numbers and verdicts come from fixed rules, never from the AI."}
+            </InfoTip>
+            {investigation.status === "failed" ? <span className="text-destructive"> We couldn’t finish (reference {investigation.error_code}).</span> : null}
+          </span>
+        }
+        action={
+          <Link href={`/businesses/${businessId}/datasets/${investigation.dataset_id}/analytics`} className={buttonVariants({ variant: "outline" })}>
+            View analytics
+          </Link>
+        }
+      />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <div className="grid min-w-0 content-start gap-6">
@@ -221,12 +227,11 @@ export default async function InvestigationPage({
               <CardHeader>
                 <CardTitle>
                   <h2 className="flex items-center gap-2 text-base font-semibold">
-                    ROOT needs your input <KindBadge kind="human" />
+                    Biztective needs your input <KindBadge kind="human" />
                   </h2>
                 </CardTitle>
                 <CardDescription id={`why-${awaiting.id}`}>
-                  {awaiting.why} About: {awaiting.claim}{" "}
-                  <span className="font-mono text-xs">({awaiting.incident_key})</span>
+                  {awaiting.why} About: {awaiting.claim}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -254,16 +259,16 @@ export default async function InvestigationPage({
                 </CardTitle>
                 <CardDescription>
                   Turn the validated findings into competing recovery strategies, set your limits, and approve or reject in the
-                  Decision center. Nothing happens outside ROOT until an owner approves and starts it.
+                  Decision center. Nothing happens outside Biztective until an owner approves and starts it.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="grid gap-2 text-sm">
+              <CardContent className="grid gap-2 text-[15px]">
                 {plans.length > 0 ? (
                   <ul className="grid gap-1" aria-label="Recovery plans">
                     {plans.map((p) => (
                       <li key={p.id}>
                         <Link href={`/businesses/${businessId}/recovery-plans/${p.id}`} className="font-medium underline-offset-4 hover:underline">
-                          Plan from {p.created_at.slice(0, 16).replace("T", " ")}: {p.status.replaceAll("_", " ")}
+                          Plan from {formatDateTime(p.created_at)}: {planChip(p.status).label}
                           {p.current_version ? ` (version ${p.current_version})` : ""}
                         </Link>
                       </li>
@@ -277,10 +282,10 @@ export default async function InvestigationPage({
 
           <section className="grid gap-4" aria-labelledby="incidents-heading">
             <h2 id="incidents-heading" className="text-lg font-semibold">
-              Incidents and their proof
+              What changed, and the proof
             </h2>
             {investigated.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{working ? "The agent is still working through the incidents…" : "No incident was investigated."}</p>
+              <p className="text-[15px] text-muted-foreground">{working ? "The agent is still working through the incidents…" : "No incident was investigated."}</p>
             ) : null}
             {investigated.map((incident) => (
               <Incident key={incident.id} incident={incident} evidenceBase={evidenceBase} />
@@ -293,15 +298,15 @@ export default async function InvestigationPage({
                 <CardTitle>
                   <h2 className="text-base font-semibold">Investigation replay</h2>
                 </CardTitle>
-                <CardDescription>Each answer created a new version. Compare what ROOT concluded before and after.</CardDescription>
+                <CardDescription>Each answer created a new version. Compare what Biztective concluded before and after.</CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4">
-                <nav aria-label="Versions" className="flex flex-wrap gap-2 text-sm">
+                <nav aria-label="Versions" className="flex flex-wrap gap-2 text-[15px]">
                   {versions.slice(1).map((v) => (
                     <Link
                       key={v.version}
                       href={`?from=${v.version - 1}&to=${v.version}`}
-                      className="rounded-md border px-2 py-1 underline-offset-4 hover:underline aria-[current=page]:bg-muted"
+                      className="inline-flex min-h-11 items-center rounded-lg border px-3 underline-offset-4 hover:underline aria-[current=page]:bg-muted"
                       aria-current={from === v.version - 1 && to === v.version ? "page" : undefined}
                     >
                       v{v.version - 1} → v{v.version}
@@ -309,7 +314,7 @@ export default async function InvestigationPage({
                   ))}
                   <Link
                     href={`?from=1&to=${latest}`}
-                    className="rounded-md border px-2 py-1 underline-offset-4 hover:underline aria-[current=page]:bg-muted"
+                    className="inline-flex min-h-11 items-center rounded-lg border px-3 underline-offset-4 hover:underline aria-[current=page]:bg-muted"
                     aria-current={from === 1 && to === latest ? "page" : undefined}
                   >
                     v1 → v{latest} (all answers)
@@ -343,12 +348,12 @@ export default async function InvestigationPage({
             <Card>
               <CardHeader>
                 <CardTitle>
-                  <h2 className="text-base font-semibold">Incidents</h2>
+                  <h2 className="text-base font-semibold">Jump to a change</h2>
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <nav aria-label="Jump to incident">
-                  <ol className="grid gap-1 text-sm">
+                  <ol className="grid gap-1 text-[15px]">
                     {investigated.map((i) => (
                       <li key={i.id}>
                         <a href={`#incident-${i.id}`} className="underline-offset-4 hover:underline">

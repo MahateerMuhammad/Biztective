@@ -83,7 +83,7 @@ export function UploadForm({
               required
               aria-describedby={`hint-${file.kind}`}
             />
-            <p id={`hint-${file.kind}`} className="text-xs text-muted-foreground">
+            <p id={`hint-${file.kind}`} className="text-[13px] text-muted-foreground">
               {file.hint}
             </p>
           </div>
@@ -98,7 +98,7 @@ export function UploadForm({
           aria-describedby="tz-hint"
           autoComplete="off"
         />
-        <p id="tz-hint" className="text-xs text-muted-foreground">
+        <p id="tz-hint" className="text-[13px] text-muted-foreground">
           IANA name, e.g. Asia/Karachi. Dates are stored in the business time zone. Amounts must be
           in {currency}.
         </p>

@@ -1,24 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { SearchCheck } from "lucide-react";
 
+import { EmptyState, PageHeader, SectionCard, StatusChip, rowLinkClass, tableClass, tableWrap, tdClass, thClass, trClass } from "@/components/page";
 import { Pager, cursorParam } from "@/components/pager";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button";
 import { getBusiness, pageInvestigations } from "@/lib/api/server";
-import type { InvestigationStatus } from "@/lib/api/types";
+import { formatDateTime } from "@/lib/format";
+import { investigationChip } from "@/lib/status";
 
 export const metadata: Metadata = { title: "Investigations" };
-
-const INVESTIGATION_STATUS: Record<InvestigationStatus, string> = {
-  queued: "Queued",
-  running: "Investigating",
-  awaiting_human: "Needs your answer",
-  completed: "Completed",
-  completed_no_incidents: "No incident",
-  insufficient_data: "Not enough data",
-  failed: "Failed",
-};
 
 export default async function InvestigationsPage({ params, searchParams }: PageProps<"/businesses/[businessId]/investigations">) {
   const { businessId } = await params;
@@ -27,55 +19,48 @@ export default async function InvestigationsPage({ params, searchParams }: PageP
   if (!business) notFound();
   return (
     <div className="grid gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Investigations</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Each investigation explains the incidents of one dataset version with evidence. Start one from Business health.
-        </p>
-      </div>
-      <Card>
-        <CardContent className="overflow-x-auto pt-4">
-          {page.items.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No investigations yet.{" "}
-              <Link href={`/businesses/${businessId}`} className="font-medium underline-offset-4 hover:underline">
-                Go to Business health
-              </Link>
-            </p>
-          ) : (
-            <table className="w-full text-left text-sm">
+      <PageHeader title="Investigations" subtitle="Each one explains the biggest changes in one version of your data." />
+      <SectionCard>
+        {page.items.length === 0 ? (
+          <EmptyState
+            icon={SearchCheck}
+            title="No investigations yet"
+            action={<Link href={`/businesses/${businessId}`} className={buttonVariants()}>Go to Business health</Link>}
+          >
+            Start one from Business health, next to a change you want explained.
+          </EmptyState>
+        ) : (
+          <div className={tableWrap} tabIndex={0} role="region" aria-label="Table, scrollable">
+            <table className={tableClass}>
               <caption className="sr-only">Investigations, newest first</caption>
               <thead>
-                <tr className="border-b">
-                  <th scope="col" className="py-2 font-medium">Started</th>
-                  <th scope="col" className="py-2 font-medium">Status</th>
-                  <th scope="col" className="py-2 font-medium">Mode</th>
-                  <th scope="col" className="py-2 font-medium">Completed</th>
+                <tr>
+                  <th scope="col" className={thClass}>Started</th>
+                  <th scope="col" className={thClass}>Status</th>
+                  <th scope="col" className={thClass}>Finished</th>
                 </tr>
               </thead>
               <tbody>
-                {page.items.map((i) => (
-                  <tr key={i.id} className="border-b last:border-0">
-                    <td className="py-2">
-                      <Link href={`/businesses/${businessId}/investigations/${i.id}`} className="font-medium underline-offset-4 hover:underline">
-                        {i.created_at.slice(0, 16).replace("T", " ")}
-                      </Link>
-                    </td>
-                    <td className="py-2">
-                      <Badge className={i.status === "awaiting_human" ? "border-human-foreground/30 bg-human text-human-foreground" : "bg-muted"}>
-                        {INVESTIGATION_STATUS[i.status]}
-                      </Badge>
-                    </td>
-                    <td className="py-2">{i.llm_mode === "llm" ? "AI-assisted wording" : "Deterministic"}</td>
-                    <td className="py-2">{i.completed_at ? i.completed_at.slice(0, 16).replace("T", " ") : "—"}</td>
-                  </tr>
-                ))}
+                {page.items.map((i) => {
+                  const chip = investigationChip(i.status);
+                  return (
+                    <tr key={i.id} className={trClass}>
+                      <td className={tdClass}>
+                        <Link href={`/businesses/${businessId}/investigations/${i.id}`} className={rowLinkClass}>
+                          {formatDateTime(i.created_at)}
+                        </Link>
+                      </td>
+                      <td className={tdClass}><StatusChip tone={chip.tone}>{chip.label}</StatusChip></td>
+                      <td className={`${tdClass} whitespace-nowrap`}>{i.completed_at ? formatDateTime(i.completed_at) : "—"}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
-          )}
-          <Pager path={`/businesses/${businessId}/investigations`} cursor={cursor} next={page.next_cursor} />
-        </CardContent>
-      </Card>
+          </div>
+        )}
+        <Pager path={`/businesses/${businessId}/investigations`} cursor={cursor} next={page.next_cursor} />
+      </SectionCard>
     </div>
   );
 }

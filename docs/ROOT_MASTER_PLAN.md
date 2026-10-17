@@ -917,3 +917,11 @@ Format:
 - Reason: Fulfill the user's Phase 11 requirement to package, deploy and verify the complete ROOT 2.0 stack on Alternate Futures container infrastructure with full security, persistence and rollback guarantees.
 - Supersedes: Baseline Vercel + Railway platform references in ARCHITECTURE §14 and SECURITY_MODEL §2, §7, §11.
 
+### AMD-23 — 2026-10-17 — Redesigned sign-in page (branch `ui-redesign`)
+
+- Affects: ARCHITECTURE §13.1 (frontend dependencies).
+- **Scope.** UI only. `/login` gets a dark, animated layout: orbiting product icons and a ripple on large screens, and the form alone on small ones. The login request, the error mapping and the redirect behaviour are unchanged.
+- **Form.** Inline checks (required, email shape, password length within the server policy of 12–128 characters) run before any request. The form keeps `onSubmit` with `preventDefault` and declares `method="post"`, so credentials never go into a URL. The submit button stays disabled until hydration and while a request is in flight. There is a show/hide toggle for the password.
+- **Accessibility.** Animations stop under `prefers-reduced-motion`, and the decorative panel is `aria-hidden`.
+- **Dependencies.** `motion` 14.0.0 (animation) and `lucide-react` 1.50.0 (icons, bundled, with no remote images). Both are exact pins of releases at least two weeks old. They are used only by `src/components/ui/modern-animated-sign-in.tsx`.
+- Reason: the user's sign-in redesign brief.

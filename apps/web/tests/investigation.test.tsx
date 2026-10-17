@@ -55,7 +55,7 @@ describe("QuestionForm", () => {
     render(<QuestionForm businessId="b1" investigationId="inv1" clarification={question} />);
     const send = screen.getByRole("button", { name: "Send answer" }) as HTMLButtonElement;
     expect(send.disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText(/Anything else ROOT should know/), { target: { value: "   " } });
+    fireEvent.change(screen.getByLabelText(/Anything else Biztective should know/), { target: { value: "   " } });
     expect(send.disabled).toBe(true);
     fireEvent.click(screen.getByLabelText("Not sure"));
     expect(send.disabled).toBe(false);
@@ -66,7 +66,7 @@ describe("QuestionForm", () => {
     postJson.mockResolvedValueOnce({ status: "answered" });
     render(<QuestionForm businessId="b1" investigationId="inv1" clarification={question} />);
     fireEvent.click(screen.getByLabelText("Yes, a planned clearance"));
-    fireEvent.change(screen.getByLabelText(/Anything else ROOT should know/), {
+    fireEvent.change(screen.getByLabelText(/Anything else Biztective should know/), {
       target: { value: "Spring clearance of old stock." },
     });
     fireEvent.click(screen.getByRole("button", { name: "Send answer" }));
@@ -111,7 +111,7 @@ describe("QuestionForm", () => {
   it("shows a validation problem without reloading", async () => {
     postJson.mockRejectedValueOnce(problem(422, "validation_error", "Choose one of the offered options."));
     render(<QuestionForm businessId="b1" investigationId="inv1" clarification={question} />);
-    fireEvent.change(screen.getByLabelText(/Anything else ROOT should know/), { target: { value: "x" } });
+    fireEvent.change(screen.getByLabelText(/Anything else Biztective should know/), { target: { value: "x" } });
     fireEvent.click(screen.getByRole("button", { name: "Send answer" }));
     expect((await screen.findByRole("alert")).textContent).toContain("Choose one of the offered options.");
     expect(refresh).not.toHaveBeenCalled();

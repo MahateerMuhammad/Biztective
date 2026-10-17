@@ -15,6 +15,24 @@ vi.mock("@/lib/api/client", () => ({
   resetCsrfToken: vi.fn(),
 }));
 
+// jsdom has no IntersectionObserver (used by the reveal animation); report everything as visible.
+class VisibleObserver {
+  constructor(private readonly callback: IntersectionObserverCallback) {}
+  observe(target: Element) {
+    this.callback([{ isIntersecting: true, target } as IntersectionObserverEntry], this as never);
+  }
+  unobserve() {}
+  disconnect() {}
+}
+vi.stubGlobal("IntersectionObserver", VisibleObserver);
+// ...nor matchMedia (used by the theme toggle).
+vi.stubGlobal("matchMedia", (query: string) => ({
+  matches: false,
+  media: query,
+  addEventListener: () => {},
+  removeEventListener: () => {},
+}));
+
 function apiProblem(status: number, code: string, retryAfter: number | null = null): ApiProblem {
   return new ApiProblem(
     { type: "t", title: "t", status, detail: "d", code, request_id: null },
@@ -38,7 +56,7 @@ describe("LoginForm", () => {
 
   it("has labelled fields and a heading", () => {
     render(<LoginForm />);
-    expect(screen.getByRole("heading", { name: "Sign in to ROOT" })).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Welcome back" })).toBeDefined();
     expect(screen.getByLabelText("Email").getAttribute("autocomplete")).toBe("username");
     expect(screen.getByLabelText("Password").getAttribute("type")).toBe("password");
   });
@@ -58,12 +76,46 @@ describe("LoginForm", () => {
   it("shows an accessible error and re-enables the button on failure", async () => {
     postJson.mockRejectedValueOnce(apiProblem(401, "invalid_credentials"));
     render(<LoginForm />);
-    await submit("a@b.c", "wrong");
+    await submit("a@b.c", "wrong but long enough");
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toBe("Invalid email or password.");
     expect(screen.getByLabelText("Email").getAttribute("aria-invalid")).toBe("true");
     expect(screen.getByRole("button", { name: "Sign in" })).toHaveProperty("disabled", false);
     expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("validates fields inline without sending a request", async () => {
+    render(<LoginForm />);
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(await screen.findByText("Email is required.")).toBeDefined();
+    expect(screen.getByText("Password is required.")).toBeDefined();
+    expect(document.activeElement).toBe(screen.getByLabelText("Email"));
+
+    await submit("not-an-email", "short");
+    expect(await screen.findByText("Enter a valid email address.")).toBeDefined();
+    expect(screen.getByText("Password must be at least 12 characters.")).toBeDefined();
+    expect(screen.getByLabelText("Password").getAttribute("aria-describedby")).toBe("password-error");
+    expect(postJson).not.toHaveBeenCalled();
+
+    // After a first submit, leaving a field re-checks it.
+    const emailField = screen.getByLabelText("Email");
+    fireEvent.change(emailField, { target: { value: "a@b.c" } });
+    fireEvent.blur(emailField);
+    await waitFor(() => expect(screen.queryByText("Enter a valid email address.")).toBeNull());
+  });
+
+  it("shows and hides the password", () => {
+    render(<LoginForm />);
+    fireEvent.click(screen.getByRole("button", { name: "Show password" }));
+    expect(screen.getByLabelText("Password").getAttribute("type")).toBe("text");
+    fireEvent.click(screen.getByRole("button", { name: "Hide password" }));
+    expect(screen.getByLabelText("Password").getAttribute("type")).toBe("password");
+  });
+
+  it("posts the form, never a GET with credentials in the URL", () => {
+    render(<LoginForm />);
+    expect(screen.getByLabelText("Email").closest("form")?.getAttribute("method")).toBe("post");
+    expect(screen.getByRole("button", { name: "Sign in" })).toHaveProperty("disabled", false);
   });
 });
 

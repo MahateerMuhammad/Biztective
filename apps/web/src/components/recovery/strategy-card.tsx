@@ -39,12 +39,12 @@ export function StrategyCard({
         <CardTitle>
           <h3 id={`strategy-${strategy.rank}`} className="text-base font-semibold">
             #{strategy.rank} · {strategy.title}
-            {selected ? <span className="ml-2 rounded bg-primary px-2 py-0.5 text-xs text-primary-foreground">selected</span> : null}
+            {selected ? <span className="ml-2 rounded bg-primary px-2 py-0.5 text-[13px] text-primary-foreground">selected</span> : null}
           </h3>
         </CardTitle>
         <CardDescription>
           Addresses {templateLabel(strategy.hypothesis.template).toLowerCase()} in{" "}
-          <span className="font-mono text-xs">{strategy.incident.key}</span>
+          <span className="tabular-nums text-[13px]">{strategy.incident.key}</span>
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4 text-sm">
@@ -52,7 +52,7 @@ export function StrategyCard({
         {strategy.rationale_segments.map((segments, i) => (
           <p key={i} className="text-muted-foreground">
             <Segments segments={segments} />
-            {strategy.rationale.source === "llm" ? <span className="ml-1 text-xs">(AI-written explanation)</span> : null}
+            {strategy.rationale.source === "llm" ? <span className="ml-1 text-[13px]">(AI-written explanation)</span> : null}
           </p>
         ))}
         {!strategy.eligibility.eligible ? (
@@ -68,7 +68,7 @@ export function StrategyCard({
             {strategy.action_types.map((a) => (
               <li key={a}>
                 {actionLabels[a]?.label ?? a}
-                {actionLabels[a]?.risky ? <span className="ml-1 text-xs font-medium">(external effect: needs your explicit permission)</span> : null}
+                {actionLabels[a]?.risky ? <span className="ml-1 text-[13px] font-medium">(external effect: needs your explicit permission)</span> : null}
               </li>
             ))}
           </ul>

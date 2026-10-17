@@ -12,6 +12,17 @@ export default defineConfig([
       "@typescript-eslint/no-explicit-any": "error",
     },
   },
+  {
+    // Vendored components (Draggable Widget Grid), used as published: its drag handlers read
+    // refs during render by design.
+    files: ["src/components/ui/draggable-widget-grid.tsx"],
+    rules: { "react-hooks/refs": "off", "react-hooks/immutability": "off", "@typescript-eslint/ban-ts-comment": "off" },
+  },
+  {
+    // Vendored Sun/Moon toggle: it reads the stored theme once, in an effect, because that is browser-only.
+    files: ["src/components/ui/sun-moon-theme-toggle.tsx"],
+    rules: { "react-hooks/set-state-in-effect": "off" },
+  },
   globalIgnores([
     ".next/**",
     "out/**",

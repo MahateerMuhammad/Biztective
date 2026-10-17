@@ -34,7 +34,7 @@ export function TrendChart({ points, metrics, currency }: { points: TrendPoint[]
             type="button"
             aria-pressed={m === metric}
             onClick={() => setMetric(m)}
-            className="rounded-md border px-2.5 py-1 text-xs font-medium hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring aria-pressed:border-foreground aria-pressed:bg-foreground aria-pressed:text-background"
+            className="rounded-md border px-2.5 py-1 text-[13px] font-medium hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring aria-pressed:border-foreground aria-pressed:bg-foreground aria-pressed:text-background"
           >
             {METRIC_LABELS[m] ?? m}
           </button>
@@ -44,10 +44,10 @@ export function TrendChart({ points, metrics, currency }: { points: TrendPoint[]
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: 4 }}>
             <CartesianGrid stroke="var(--border)" vertical={false} />
-            <XAxis dataKey="week" tickFormatter={(w: string) => w.slice(5)} tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" minTickGap={24} />
+            <XAxis dataKey="week" tickFormatter={(w: string) => w.slice(5)} tick={{ fontSize: 13 }} stroke="var(--muted-foreground)" minTickGap={24} />
             <YAxis
               width={72}
-              tick={{ fontSize: 11 }}
+              tick={{ fontSize: 13 }}
               stroke="var(--muted-foreground)"
               tickFormatter={(v: number) => formatMetric(metric, v, currency)}
             />
@@ -59,7 +59,7 @@ export function TrendChart({ points, metrics, currency }: { points: TrendPoint[]
           </LineChart>
         </ResponsiveContainer>
       </div>
-      <figcaption className="text-xs text-muted-foreground">{summary}</figcaption>
+      <figcaption className="text-[13px] text-muted-foreground">{summary}</figcaption>
     </figure>
   );
 }

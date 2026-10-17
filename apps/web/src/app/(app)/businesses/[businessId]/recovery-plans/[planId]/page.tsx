@@ -13,13 +13,16 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getAction, getBusiness, getPlan } from "@/lib/api/server";
 import type { ActionDetail, PlanDecisionView, PlanStatus } from "@/lib/api/types";
-import { PLAN_ISSUES, formatMoney } from "@/lib/format";
+import { PLAN_ISSUES, formatDateTime, formatMoney } from "@/lib/format";
+import { PageHeader, StatusChip } from "@/components/page";
+import { InfoTip } from "@/components/ui/info-tip";
+import { planChip } from "@/lib/status";
 
 export const metadata: Metadata = { title: "Decision center" };
 
 const STATUS_TEXT: Record<PlanStatus, string> = {
   queued: "Preparing…",
-  running: "ROOT is preparing the plan…",
+  running: "Biztective is preparing the plan…",
   awaiting_decision: "Waiting for your decision",
   approved: "Approved",
   rejected: "Rejected",
@@ -48,24 +51,34 @@ export default async function PlanPage({ params }: PageProps<"/businesses/[busin
   return (
     <div className="grid gap-6">
       {working ? <AutoRefresh /> : null}
-      <div>
-        <nav aria-label="Breadcrumb" className="flex flex-wrap gap-2 text-sm">
-          <Link href={`/businesses/${businessId}/decisions`} className="underline-offset-4 hover:underline">
-            ← Decision center
-          </Link>
-          <span aria-hidden="true">·</span>
-          <Link href={`/businesses/${businessId}/investigations/${plan.investigation_id}`} className="underline-offset-4 hover:underline">
-            Source investigation
-          </Link>
-        </nav>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">Recovery plan</h1>
-        <p className="mt-1 text-sm" role="status" aria-live="polite">
-          {STATUS_TEXT[plan.status]}
-          {current ? ` · version ${current.version}` : ""}
-          {current ? ` · content hash ${current.content_hash.slice(0, 12)}…` : ""}
-        </p>
-        {plan.status === "failed" ? <p className="text-sm text-muted-foreground">Error: {plan.error_code}</p> : null}
-      </div>
+      <PageHeader
+        back={
+          <nav aria-label="Breadcrumb" className="flex flex-wrap gap-x-4 gap-y-1">
+            <Link href={`/businesses/${businessId}/decisions`} className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
+              ← Decision center
+            </Link>
+            <Link href={`/businesses/${businessId}/investigations/${plan.investigation_id}`} className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
+              Source investigation
+            </Link>
+          </nav>
+        }
+        title={
+          <span className="flex flex-wrap items-center gap-3">
+            Recovery plan
+            <StatusChip tone={planChip(plan.status).tone}>{planChip(plan.status).label}</StatusChip>
+          </span>
+        }
+        subtitle={
+          <span className="inline-flex flex-wrap items-center gap-x-1">
+            {STATUS_TEXT[plan.status]}
+            {current ? ` · version ${current.version}` : ""}
+            {current ? (
+              <InfoTip label="Technical details">Content fingerprint {current.content_hash.slice(0, 12)}…</InfoTip>
+            ) : null}
+            {plan.status === "failed" ? <span className="text-destructive"> We couldn’t prepare it (reference {plan.error_code}).</span> : null}
+          </span>
+        }
+      />
 
       {plan.approved ? (
         <Alert>
@@ -73,8 +86,8 @@ export default async function PlanPage({ params }: PageProps<"/businesses/[busin
             Approved version {plan.approved.version} by {plan.approved.approved_by.display_name ?? "an owner"}
           </AlertTitle>
           <AlertDescription>
-            Content hash <span className="font-mono">{plan.approved.content_hash.slice(0, 12)}…</span>. Approval records your
-            decision; ROOT executes nothing until an owner starts it below. Editing the plan removes this approval.
+            Approval records your decision. Biztective executes nothing until an owner starts it below. Editing the plan removes this approval.
+            <span className="sr-only"> Content fingerprint {plan.approved.content_hash.slice(0, 12)}.</span>
           </AlertDescription>
         </Alert>
       ) : null}
@@ -118,7 +131,7 @@ export default async function PlanPage({ params }: PageProps<"/businesses/[busin
                 {content.constraints.allowed_action_types.join(", ")}
               </CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-4 text-sm">
+            <CardContent className="grid gap-4 text-[15px]">
               {content.totals ? (
                 <p>
                   Selected strategies, estimated net over the horizon: {formatMoney(content.totals.scenarios.low.net, content.currency)} (low) ·{" "}
@@ -190,17 +203,16 @@ export default async function PlanPage({ params }: PageProps<"/businesses/[busin
         <Card>
           <CardHeader>
             <CardTitle>
-              <h2 className="text-base font-semibold">Decision audit history</h2>
+              <h2 className="text-base font-semibold">Decision history</h2>
             </CardTitle>
             <CardDescription>Every decision is kept, in order, and cannot be changed.</CardDescription>
           </CardHeader>
           <CardContent>
-            <ol className="grid gap-2 text-sm" aria-label="Decisions">
+            <ol className="grid gap-3 text-[15px]" aria-label="Decisions">
               {plan.decisions.map((d) => (
                 <li key={d.id}>
                   {d.decided_by.display_name ?? "A team member"} ({d.decided_role}) {DECISION_TEXT[d.decision]} version {d.version}{" "}
-                  <span className="font-mono text-xs">({d.content_hash.slice(0, 12)}…)</span> on{" "}
-                  {d.created_at.slice(0, 16).replace("T", " ")}
+                  on <span title={d.content_hash}>{formatDateTime(d.created_at)}</span>
                   {d.outcome === "refused" ? ` — not applied: ${d.refusal?.replaceAll("_", " ")}` : ""}
                   {d.reason ? <span className="block whitespace-pre-wrap text-muted-foreground">“{d.reason}”</span> : null}
                 </li>

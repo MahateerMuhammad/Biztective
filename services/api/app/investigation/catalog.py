@@ -722,4 +722,4 @@ RECOMMENDATIONS: dict[str, tuple[str, str]] = {
         "Track margins on the repriced products against the planned price change.",
     ),
 }
-ANSWER_NEEDED = "Answer the open question so ROOT can separate the competing explanations."
+ANSWER_NEEDED = "Answer the open question so Biztective can separate the competing explanations."

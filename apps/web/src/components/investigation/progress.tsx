@@ -1,4 +1,5 @@
 import type { InvestigationEvent } from "@/lib/api/types";
+import { formatDateTime } from "@/lib/format";
 
 /** Plain-language labels for the investigation's append-only event log. */
 const LABELS: Record<string, string> = {
@@ -30,9 +31,9 @@ const LABELS: Record<string, string> = {
 /** Newest first, so the latest step is on top while the agent works. */
 export function Progress({ events, working }: { events: InvestigationEvent[]; working: boolean }) {
   const recent = [...events].reverse().slice(0, 12);
-  if (recent.length === 0) return <p className="text-sm text-muted-foreground">Waiting for the agent to start…</p>;
+  if (recent.length === 0) return <p className="text-[15px] text-muted-foreground">Waiting for the agent to start…</p>;
   return (
-    <ol className="grid gap-2 text-sm" aria-label="Agent activity, newest first">
+    <ol className="grid gap-3 text-[15px]" aria-label="Agent activity, newest first">
       {recent.map((e, i) => (
         <li key={e.seq} className="flex gap-3">
           <span
@@ -41,8 +42,8 @@ export function Progress({ events, working }: { events: InvestigationEvent[]; wo
           />
           <span className="grid">
             <span className={i === 0 ? "font-medium" : ""}>{LABELS[e.type] ?? e.type.replaceAll(/[._]/g, " ")}</span>
-            <span className="text-xs text-muted-foreground tabular-nums">
-              {e.occurred_at.slice(11, 19)} · step {e.seq}
+            <span className="text-[13px] text-muted-foreground tabular-nums">
+              <span title={e.occurred_at}>{formatDateTime(e.occurred_at)}</span>
               {e.actor_kind === "human" ? " · by a person" : ""}
             </span>
           </span>

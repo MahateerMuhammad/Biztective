@@ -99,7 +99,7 @@ export function QuestionForm({
         </div>
       </fieldset>
       <div className="grid gap-1">
-        <Label htmlFor={`text-${clarification.id}`}>Anything else ROOT should know? (optional)</Label>
+        <Label htmlFor={`text-${clarification.id}`}>Anything else Biztective should know? (optional)</Label>
         <textarea
           id={`text-${clarification.id}`}
           className="min-h-20 rounded-md border bg-background p-2 text-sm"
@@ -111,9 +111,9 @@ export function QuestionForm({
           }}
           aria-describedby={`text-help-${clarification.id}`}
         />
-        <p id={`text-help-${clarification.id}`} className="text-xs text-muted-foreground">
+        <p id={`text-help-${clarification.id}`} className="text-[13px] text-muted-foreground">
           {freeText.length}/{FREE_TEXT_MAX}. Your words are stored as written, attributed to you
-          and shown to your team. ROOT never treats them as instructions or as approval of
+          and shown to your team. Biztective never treats them as instructions or as approval of
           anything.
         </p>
       </div>
