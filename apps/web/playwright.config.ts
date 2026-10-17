@@ -17,9 +17,13 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: 0,
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
+  expect: {
+    timeout: remoteUrl ? 60_000 : 5_000,
+  },
   use: {
     baseURL: remoteUrl || "http://localhost:3000",
     trace: "retain-on-failure",
+    ...(remoteUrl ? { actionTimeout: 30_000, navigationTimeout: 60_000 } : {}),
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   ...(remoteUrl
