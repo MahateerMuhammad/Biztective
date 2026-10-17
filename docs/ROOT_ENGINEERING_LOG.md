@@ -1328,5 +1328,5 @@ Every Phase 6 objective listed above is implemented and covered by the tests in 
   - Tab creation is not counted as a row write, so a `failed` action may have left empty ROOT tabs with headers.
   - The executor runs in the single in-process worker (ADR-003).
   - Sheets quotas (about 60 write requests per minute per user) are respected only through backoff, not a shared rate limiter.
-- **Commit hash and GitHub push status:** Appended below after commit.
+- **Commit hash and GitHub push status:** `42997a929c28cf24a65c8ca58599e7b02b8f0a3e`, pushed to `main` without force; `git ls-remote origin refs/heads/main` matched `git rev-parse HEAD`.
 - **Next-phase dependencies:** Phase 9 (baseline 12: hardening). Do not begin it in this session.
