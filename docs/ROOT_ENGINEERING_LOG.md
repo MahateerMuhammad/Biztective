@@ -1372,4 +1372,4 @@ Every Phase 6 objective listed above is implemented and covered by the tests in 
   - Apps Script quotas and latency (about 1–1.5 s per call).
   - The script runs as its deployer: if that person loses access or the deployment is removed, executions fail as `integration_misconfigured`.
   - The live test adds rows to the owner's sheet on every run and deletes nothing.
-- **Commit hash and GitHub push status:** Appended below after commit.
+- **Commit hash and GitHub push status:** `c4ca144843fadd8feb7a131c7d8132aed304c02f`, pushed to `main` without force; `git ls-remote origin refs/heads/main` matched `git rev-parse HEAD`.
