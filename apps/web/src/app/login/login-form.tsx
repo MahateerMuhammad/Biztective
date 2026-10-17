@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { postJson, resetCsrfToken } from "@/lib/api/client";
 import { ApiProblem, type User } from "@/lib/api/types";
+import { useHydrated } from "@/lib/use-hydrated";
 
 export function loginErrorMessage(error: unknown): string {
   if (error instanceof ApiProblem) {
@@ -30,6 +31,7 @@ export function loginErrorMessage(error: unknown): string {
 export function LoginForm() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const hydrated = useHydrated();
   const [submitting, setSubmitting] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -89,7 +91,7 @@ export function LoginForm() {
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           ) : null}
-          <Button type="submit" disabled={submitting}>
+          <Button type="submit" disabled={!hydrated || submitting}>
             {submitting ? "Signing in…" : "Sign in"}
           </Button>
         </form>

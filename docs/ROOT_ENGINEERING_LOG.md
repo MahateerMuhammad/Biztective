@@ -1373,3 +1373,114 @@ Every Phase 6 objective listed above is implemented and covered by the tests in 
   - The script runs as its deployer: if that person loses access or the deployment is removed, executions fail as `integration_misconfigured`.
   - The live test adds rows to the owner's sheet on every run and deletes nothing.
 - **Commit hash and GitHub push status:** `c4ca144843fadd8feb7a131c7d8132aed304c02f`, pushed to `main` without force; `git ls-remote origin refs/heads/main` matched `git rev-parse HEAD`.
+
+## Phase 9 — Interface around the end-to-end workflow
+
+- **Date:** 2026-10-17
+- **Objective and scope:** Per AMD-20 (baseline Phase 12, interface, accessibility, E2E and performance part). Three main screens on the real workflow, Business health, the Investigation workspace and the Decision center, plus Investigations, Data, Integrations and Evidence views. Playwright end-to-end, accessibility, mobile, keyboard, failure-mode and performance checks.
+- **Pre-flight:** AGENTS R-3 conflicted with the brief, because Phase 8's real-Sheets gate was open. The user chose to provide credentials first. Phase 8 was closed (`c4ca144`, record `db09eb4`) before any Phase 9 code was committed.
+- **Component architecture:**
+  - **Server-rendered screens.** Every screen is a React Server Component that calls the backend with the visitor's cookies (`lib/api/server.ts`; `getMe` and `getBusiness` are deduplicated per request).
+  - **Client islands**, kept to stateful UI: forms, the chart metric switch, navigation highlighting, and the action buttons (start investigation, answer, plan decisions, execute, retry, connect sheet).
+  - **New shared pieces:**
+    - `businesses/[businessId]/layout.tsx`: a business header and section navigation (Business health, Investigations, Decision center, Data, Integrations); a non-member gets a 404 before anything renders.
+    - `loading.tsx` (skeleton) and `error.tsx` (retry; nothing shown as done).
+    - A skip link and a focusable `<main>`.
+    - `KindBadge`: Fact, Hypothesis, Estimate, Your input, Action, always in words; new AA colour tokens for each kind and for risk.
+    - `ProofChain`, `Progress` (agent events), `Pager` (keyset), `NavLink`.
+    - `Segments` now links each cited value to its evidence item.
+    - `TrendChart` and `StrategyChart` (Recharts, client-only, each with a server-rendered table alternative).
+    - `StrategyComparison` and the Evidence page.
+    - `useHydrated`: every client form keeps its submit button disabled until hydration (see defects).
+- **Screens and interactions:**
+  - **Business health** (`/businesses/{id}`): built on the latest ready dataset.
+    - Six headline metrics with period change, coloured by whether the change is good or bad for the business and explained in words.
+    - Prioritized incidents with severity, current against usual, impact and onset. Each has a "Drill down" link to the analytics evidence, and there is a "Start investigation" or "Open/Answer" entry point.
+    - Data freshness and quality (range, upload time, order lines, rejected rows, warnings, analysis restrictions).
+    - A 26-week trend with a metric switch and a table alternative; customer segments; recent investigations and decisions.
+    - An empty state (upload) and a processing state that refreshes itself.
+  - **Investigation workspace:**
+    - Status with live agent progress, newest event first, refreshing while the agent works.
+    - The question card first when ROOT is waiting, and findings.
+    - One Proof chain per incident: (1) what changed [Fact], (2) competing explanations [Hypothesis], each with criteria ✓/✗/?, the human-input criteria marked, and evidence-linked basis; (3) the evidence trail, with who requested each item (detection, rule or AI); (4) the conclusion.
+    - Unresolved uncertainties (inconclusive or context-needed explanations, data gaps, restrictions, caveats), an incident navigator, Replay, and the route into the Decision center.
+  - **Evidence page:**
+    - Measured values, and an integrity badge from the stored-hash check.
+    - Source records by file and row, plus the hashes and query parameters.
+  - **Decision center:**
+    - A paginated index of plans with decision and execution status.
+    - The plan page: cost and trade-off comparison (chart and a table with low–mid–high benefit, mid cost and net, actions with risky ones flagged, main trade-off); the existing editing and approval panel; execution state with verified external results (rows per tab, read-back counts, written ranges, attempts and Google calls); the decision audit history.
+- **API flow:**
+  - **Page reads:** the server components call the existing read endpoints, plus two Phase 9 additions:
+    - `GET /investigations` with `cursor`/`next_cursor`;
+    - `GET /recovery-plans`, a business-wide paginated list with `execution_status`.
+  - **Mutations:** these go from the browser through the same-origin rewrite, with CSRF and idempotency keys, and the UI changes only after the 2xx response (then `router.refresh()`).
+  - **Authorization:** decided by the server. Viewer-only controls are hidden for convenience, and the API refuses anything else regardless (T-16).
+- **Defects found and fixed during the phase:**
+  - **Contrast** (axe `color-contrast`): the "high" severity badge used the theme's light red, and the "Ruled out" badge used grey on grey (about 4.3:1). New `risk` tokens and full-contrast muted badges fixed both.
+  - **Scrollable regions:** the evidence JSON, plan JSON and weekly table were not keyboard-focusable (axe `scrollable-region-focusable`); they now have `tabIndex=0` and a label.
+  - **Pre-hydration submits:** a click on a form before React hydrated performed a native GET that reloaded the page and silently dropped the input. It was found by E2E on the integrations form, and all six client forms are now disabled until hydrated.
+  - **Real bridge latency and redirects:** with real Google, the bridge returned a second redirect and then Google's HTML "Error" page, which was classified as `integration_misconfigured`. The action correctly went to `manual_review`/`failed` and never claimed success. Reproduced live in 1 of 16 probe calls; healthy calls took 2–19 s. The fix is bounded redirects between the two Apps Script hosts, the error page treated as transient (reconciled for writes) and a 45 s timeout (AMD-20). Two new bridge tests cover it.
+- **Accessibility results:**
+  - **axe:** `@axe-core/playwright` with the `wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa` and `wcag22aa` tags.
+  - **Zero violations on:** sign-in, dataset quality report, Business health (desktop and 390 px), Investigation workspace, Evidence, Decision center plan page, Integrations, the Investigations, Decision center and Data indexes, and the empty Data page.
+  - **Keyboard-only flow:** sign in → skip link → main → section navigation, with `aria-current`.
+  - **Charts and colour:** every chart has a role="img" summary and a table; status and kind are always written in words.
+  - **Not covered:** manual screen-reader testing was not done.
+- **Performance measurements:** production build, local machine, Chromium, a warm backend on the same host. "To heading" is the time until the page's h1 is visible; TTFB is time to first byte; DCL is DOM content loaded.
+
+  | Route | To heading (ms) | TTFB (ms) | DCL (ms) | JS transferred | JS decoded | Scripts |
+  |---|---:|---:|---:|---:|---:|---:|
+  | Business health | 517 | 30 | 220 | 262 KB | 862 KB | 12 |
+  | Investigations | 245 | 22 | 120 | 152 KB | 494 KB | 10 |
+  | Decision center | 238 | 22 | 119 | 152 KB | 494 KB | 10 |
+  | Data | 298 | 76 | 181 | 152 KB | 494 KB | 10 |
+  | Investigation workspace | 353 | 39 | 151 | 154 KB | 499 KB | 11 |
+  | Recovery plan (separate run) | 381 | 43 | 156 | 273 KB | 898 KB | 13 |
+
+  - **Budgets** asserted by the E2E: ≤ 400 KB transferred JS and ≤ 5 s to the heading per route.
+  - **Recharts** accounts for about 110 KB of the two chart pages and loads only on those routes.
+  - **These are local numbers, not production.** Real-bridge executions take 30–60 s end to end because of Apps Script latency; they run in the background job, and the page refreshes itself.
+- **Tests observed in this session:**
+  - **Backend:** `ruff check`, `ruff format --check` and `mypy` (strict, 154 files) pass. `pytest --cov --cov-fail-under=85`: **740 passed, 2 skipped (opt-in live), 5 deselected (perf)**, coverage 95.28%. Every per-area gate (auth/tenancy, analytics, verification, critic ≥ 95%) passes; `app/actions` is at 94%. New tests: `tests/recovery/test_plan_index.py` (pagination, invalid cursor, tenant isolation) and two bridge redirect tests. OpenAPI and generated types are regenerated.
+  - **Frontend:** `next typegen && tsc --noEmit`, `eslint --max-warnings=0` and `npm audit` gate pass; `next build` succeeds. Vitest **57/57**, including new `tests/phase9.test.tsx`: Proof chain structure and evidence links, untrusted text rendered inertly, progress labels, kind badges, cursor validation, strategy comparison, and NavLink `aria-current`.
+  - **Playwright** (Chromium, production build, real FastAPI, PostgreSQL, worker), on a fresh database each run (`DROP`/`CREATE`, migrate, seed, like CI):
+    - **CI mode** (no Google credentials): **17/17**.
+    - **Real mode** (AMD-19 bridge to the owner's sheet): **17/17**. The journey's action `6f9e6b9e-b3d2-5711-96b3-1f2d27d53963` was `verified`, written to `'ROOT Review Tasks'!A10:L10`, read back 1 of 1.
+  - **Specs:**
+    - **`workflow.spec.ts`** (the completion gate):
+      - upload and quality report;
+      - Business health and drill-down;
+      - Start investigation (double click: one investigation);
+      - three clarifications, including a reload while suspended, with each answer double-clicked: one version per answer;
+      - Proof chain, Fact and Hypothesis labels, uncertainties, Evidence page with integrity;
+      - Replay;
+      - plan rejected (no execution panel), new plan, edits recalculated to version 2, approval (double click: one approval);
+      - spreadsheet bound with the ownership code;
+      - execution (double click: one action) shown "Done and verified", with a link to the sheet.
+    - **`ux.spec.ts`:**
+      - keyboard-only use;
+      - 390 px layouts (no horizontal overflow on the six main routes);
+      - expired session (form error, no success, redirect to sign-in);
+      - injected 503 shown and nothing marked done;
+      - missing resource shown as not found;
+      - cross-tenant: a second seeded business gets 404 for the first business's pages and sees none of its data, plus empty states;
+      - slow network (1.5 s latency, 400 kbit/s): the skeleton shows, then the content;
+      - route performance and JS budgets;
+      - axe on the secondary screens.
+    - **Console guard:** every test fails on any browser console error or uncaught page error. Resource-load errors are excluded and are asserted through the UI instead.
+    - **Existing specs:** only their navigation was updated to the new structure; the shell assertions now check the new business header and sections. No assertion was weakened.
+  - **CI:** the E2E job now exports `DATABASE_URL_MIGRATIONS`, which the tenancy test needs to seed a second business. Remote CI has not been observed.
+- **Completion gate status:** the gate is "a first-time user can understand the incident, participate and approve a verified action without developer assistance".
+  - **Demonstrated end to end** by `workflow.spec.ts`. It uses only visible, labelled controls on the real stack and a real Google Sheet, with the steps explained on the page.
+  - **Not done:** no study with a real first-time user. That claim rests on the automated walkthrough and design review, not on observed users.
+- **Remaining issues:**
+  - **Not-found status:** pages inside the streaming boundary answer an unknown own resource with the not-found UI under HTTP 200, because streaming has already begun. Foreign businesses still get a real 404 from the layout.
+  - **Chart pages** ship about 110 KB of extra JS (Recharts).
+  - **Disconnecting a spreadsheet** is API-only.
+  - **Real Sheets in CI:** not tested, because CI has no Google credentials; the workflow records it as **not run**.
+  - **Not done:** manual screen-reader testing (NVDA/VoiceOver); browsers other than Chromium; production performance.
+  - **Live-run side effects:** every real run appends rows to the owner's sheet.
+  - **Earlier open item:** the Phase 8 run-1 independent-read failure remains unexplained. The newly found redirect and HTML error behaviour is a likely cause, but it is not proven.
+- **Commit hash and GitHub push status:** Appended below after commit.
+- **Next-phase dependencies:** Phase 10 (baseline 13, deployment and demo readiness). Do not begin it in this session.

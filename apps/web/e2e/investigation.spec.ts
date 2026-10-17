@@ -43,6 +43,7 @@ test("a human answer revises the investigation while the measurements stay intac
   test.setTimeout(180_000);
   const files = generated();
   await signIn(page);
+  await page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: "Data" }).click();
   await page.getByRole("link", { name: "Upload dataset" }).click();
   for (const [kind, body] of Object.entries(files)) {
     await page.getByLabel(`${kind[0]!.toUpperCase()}${kind.slice(1)} (.csv)`).setInputFiles({

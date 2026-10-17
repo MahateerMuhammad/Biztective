@@ -52,8 +52,13 @@ test("sign in, see the business shell, sign out", async ({ page, context }) => {
   await expect(page).toHaveURL(/\/businesses\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   await expect(page.getByTestId("current-user")).not.toBeEmpty();
-  await expect(page.getByRole("heading", { name: "Datasets" })).toBeVisible();
-  await expect(page.getByText("Your role:")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Business health" })).toBeVisible();
+  const sections = page.getByRole("navigation", { name: "Sections" });
+  for (const name of ["Business health", "Investigations", "Decision center", "Data"]) {
+    await expect(sections.getByRole("link", { name })).toBeVisible();
+  }
+  await expect(sections.getByRole("link", { name: "Business health" })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByText(/^Owner · /)).toBeVisible();
 
   // The session cookie is HttpOnly: never readable from page scripts.
   const cookies = await context.cookies();

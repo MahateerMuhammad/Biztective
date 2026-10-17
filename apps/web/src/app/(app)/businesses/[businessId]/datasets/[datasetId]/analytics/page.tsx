@@ -259,7 +259,7 @@ export default async function AnalyticsPage({
           {incidents.length > 0 ? (
             <ol className="grid gap-4">
               {incidents.map((i) => (
-                <li key={i.id} className="rounded-lg border p-3">
+                <li key={i.id} id={`incident-${i.id}`} className="scroll-mt-4 rounded-lg border p-3">
                   <p className="text-sm font-medium">
                     #{i.rank} · <span className="uppercase">{i.severity}</span> ·{" "}
                     {METRIC_LABELS[i.metric] ?? i.metric} in {i.dimension === "overall" ? "the whole business" : `${i.dimension} “${i.value}”`}

@@ -636,6 +636,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/businesses/{business_id}/recovery-plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Business Plans
+         * @description Every plan of the business, newest first (the Decision Center index).
+         */
+        get: operations["list_business_plans_api_v1_businesses__business_id__recovery_plans_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/businesses/{business_id}/recovery-plans/{plan_id}": {
         parameters: {
             query?: never;
@@ -2258,6 +2278,7 @@ export interface operations {
             query?: {
                 dataset_id?: string | null;
                 limit?: number;
+                cursor?: string | null;
             };
             header?: never;
             path: {
@@ -2652,6 +2673,42 @@ export interface operations {
             path: {
                 investigation_id: string;
                 version: number;
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_business_plans_api_v1_businesses__business_id__recovery_plans_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
                 business_id: string;
             };
             cookie?: never;

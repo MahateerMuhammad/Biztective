@@ -18,6 +18,7 @@ from app.audit.writer import record_audit
 from app.auth.dependencies import client_host
 from app.core.db import DbSession
 from app.core.errors import ApiError
+from app.core.pagination import Cursor, decode_uuid_cursor, encode_cursor
 from app.datasets import service as idempotency
 from app.investigation import output, replay, service
 from app.investigation.critic import intact
@@ -201,16 +202,26 @@ async def list_investigations(
     tenant: Reader,
     dataset_id: UUID | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    cursor: Cursor = None,
 ) -> dict[str, Any]:
+    # UUIDv7 ids are time-ordered, so id order is creation order.
     query = (
         select(Investigation)
         .where(Investigation.business_id == tenant.business_id)
-        .order_by(Investigation.created_at.desc(), Investigation.id.desc())
-        .limit(limit)
+        .order_by(Investigation.id.desc())
+        .limit(limit + 1)
     )
     if dataset_id is not None:
         query = query.where(Investigation.dataset_id == dataset_id)
-    return {"items": [_summary(i) for i in await db.scalars(query)]}
+    if cursor is not None:
+        query = query.where(Investigation.id < decode_uuid_cursor(cursor))
+    rows = list(await db.scalars(query))
+    more = len(rows) > limit
+    rows = rows[:limit]
+    return {
+        "items": [_summary(i) for i in rows],
+        "next_cursor": encode_cursor(str(rows[-1].id)) if more else None,
+    }
 
 
 @router.get("/investigations/{investigation_id}")

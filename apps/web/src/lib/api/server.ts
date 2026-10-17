@@ -4,6 +4,11 @@ import { cookies } from "next/headers";
 import { cache } from "react";
 
 import type {
+  CursorPage,
+  EvidenceDetail,
+  InvestigationEvent,
+  PlanIndexItem,
+  WeeklyRow,
   ActionDetail,
   ActionSummary,
   AnalysisRevision,
@@ -56,15 +61,17 @@ export const getMe = cache(async (): Promise<Me | null> => {
   return (await backendGet<Me>("/api/v1/auth/me")).data;
 });
 
-export async function getBusiness(businessId: string): Promise<Business | null> {
+/** Deduplicated per request: the business layout and its page share one fetch. */
+export const getBusiness = cache(async (businessId: string): Promise<Business | null> => {
   return (await backendGet<Business>(`/api/v1/businesses/${encodeURIComponent(businessId)}`))
     .data;
-}
+});
 
-export async function listDatasets(businessId: string): Promise<DatasetPage | null> {
+export async function listDatasets(businessId: string, cursor?: string, limit = 20): Promise<DatasetPage | null> {
+  const after = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
   return (
     await backendGet<DatasetPage>(
-      `/api/v1/businesses/${encodeURIComponent(businessId)}/datasets?limit=20`,
+      `/api/v1/businesses/${encodeURIComponent(businessId)}/datasets?limit=${limit}${after}`,
     )
   ).data;
 }
@@ -196,7 +203,43 @@ export function getAction(businessId: string, actionId: string) {
 }
 
 export function listIntegrations(businessId: string) {
-  return analyticsGet<{ available: boolean; items: Integration[] }>(
+  return analyticsGet<{ available: boolean; mode: "apps_script" | "service_account" | null; items: Integration[] }>(
     `/api/v1/businesses/${encodeURIComponent(businessId)}/integrations`,
   );
+}
+
+const business = (businessId: string) => `/api/v1/businesses/${encodeURIComponent(businessId)}`;
+const cursorQuery = (cursor: string | undefined) => (cursor ? `&cursor=${encodeURIComponent(cursor)}` : "");
+
+export function getWeeklyMetrics(businessId: string, datasetId: string) {
+  return analyticsGet<AnalyticsEnvelope<WeeklyRow[]>>(
+    `${business(businessId)}/datasets/${encodeURIComponent(datasetId)}/metrics?granularity=week`,
+  );
+}
+
+export async function pageInvestigations(businessId: string, cursor?: string, limit = 20) {
+  return (
+    (await analyticsGet<CursorPage<InvestigationSummary>>(
+      `${business(businessId)}/investigations?limit=${limit}${cursorQuery(cursor)}`,
+    )) ?? { items: [], next_cursor: null }
+  );
+}
+
+export async function pagePlans(businessId: string, cursor?: string, limit = 20) {
+  return (
+    (await analyticsGet<CursorPage<PlanIndexItem>>(
+      `${business(businessId)}/recovery-plans?limit=${limit}${cursorQuery(cursor)}`,
+    )) ?? { items: [], next_cursor: null }
+  );
+}
+
+export function getEvidence(businessId: string, evidenceId: string) {
+  return analyticsGet<EvidenceDetail>(`${business(businessId)}/evidence/${encodeURIComponent(evidenceId)}`);
+}
+
+export async function listEvents(businessId: string, investigationId: string, afterSeq = 0) {
+  const page = await analyticsGet<{ items: InvestigationEvent[]; last_seq: number }>(
+    `${business(businessId)}/investigations/${encodeURIComponent(investigationId)}/events?after_seq=${afterSeq}&limit=200`,
+  );
+  return page ?? { items: [], last_seq: 0 };
 }

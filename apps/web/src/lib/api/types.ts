@@ -583,3 +583,42 @@ export interface Integration {
   verified_at: string | null;
   created_at: string;
 }
+
+/** Phase 9 screens. */
+export interface WeeklyRow {
+  week: string;
+  dimension: string;
+  value: string | null;
+  metrics: MetricValues;
+}
+
+export interface PlanIndexItem extends PlanSummary {
+  execution_status: ActionStatus | null;
+}
+
+export interface CursorPage<T> {
+  items: T[];
+  next_cursor: string | null;
+}
+
+export interface EvidenceDetail {
+  id: string;
+  kind: string;
+  revision_id: string;
+  incident_id: string;
+  query_version: number;
+  params: Record<string, unknown>;
+  params_hash: string;
+  result: Record<string, unknown>;
+  result_hash: string;
+  intact: boolean;
+  created_at: string;
+}
+
+export interface InvestigationEvent {
+  seq: number;
+  type: string;
+  actor_kind: string;
+  occurred_at: string;
+  payload: Record<string, unknown>;
+}

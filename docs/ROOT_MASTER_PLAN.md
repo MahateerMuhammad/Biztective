@@ -869,3 +869,25 @@ Format:
 - **Backend.** `SHEETS_BRIDGE_URL` (must match `^https://script\.google\.com/macros/s/[A-Za-z0-9_-]{20,200}/exec$`) and `SHEETS_BRIDGE_TOKEN` (secret), set together. When configured, the bridge is used instead of a service account; `GET …/integrations` reports `mode` (`apps_script` | `service_account`). `BridgeClient` shares the retrying transport and error classes of the REST client. Apps Script answers each POST with a redirect, and only one hop to `https://script.googleusercontent.com` is followed; any other `Location` is `integration_misconfigured`, as is a non-JSON answer (a sign-in page means the deployment is not public). Bridge statuses map like the API's: 401 → `integration_credentials_invalid`, 403 → `integration_permission_denied`, 404 → `destination_not_found`, other 4xx → `destination_invalid`, 5xx or busy → retryable and ambiguous for writes.
 - **Unchanged.** Ownership proof (code in `ROOT_VERIFY!A1`, read through the bridge), the global one-business binding, payloads, keys, reconcile-before-write, read-back verification, statuses, retries and audit are exactly as in AMD-18. Outbound hosts (SEC-15) now also include `script.google.com` and, for that redirect only, `script.googleusercontent.com`.
 - **Trade-offs.** Anyone with the URL and token can append to, and read, that one spreadsheet's tabs, so both are secrets kept only in backend configuration. Apps Script is slower (about 1–2 s per call) and subject to its daily quotas. The script runs as its deployer, so revoking that person's access, or deleting the deployment, stops execution (`integration_misconfigured`). The service-account mode remains for deployments that can use it.
+
+### AMD-20 — 2026-10-17 — Phase 9: interface around the end-to-end workflow
+
+- Affects: §8 baseline Phase 12 (the accessibility, end-to-end and performance part), DATA_CONTRACTS §7, ARCHITECTURE §13.1, TEST_STRATEGY (E2E).
+- **Scope.** User Phase 9 delivers the interface of the end-to-end workflow. It has three main screens, Business health, the Investigation workspace and the Decision center, plus Investigations, Data, Integrations and Evidence views. It adds Playwright end-to-end, accessibility (axe, WCAG 2.2 AA tags), mobile, keyboard, failure-mode and performance checks. Backend hardening items of baseline Phase 12 (load tests, deletion and retention, account lifecycle) are not part of it.
+- **API additions (read-only, `investigation:read`, tenant-scoped, keyset pagination as in §7.1):**
+  - `GET /businesses/{bid}/investigations` gains `cursor` and returns `next_cursor`, ordered by id descending. The id is UUIDv7, so this is creation order; it replaces `created_at, id`, which gives the same order.
+  - New `GET /businesses/{bid}/recovery-plans?limit&cursor`: every plan of the business, newest first, with `execution_status` (the latest `plan_actions` status or null). This is the Decision center index.
+- **Interface rules.**
+  - Every screen is a React Server Component fed only by these APIs. Client components are limited to inputs, charts and controls that need state.
+  - Facts, hypotheses, estimates, people's input and actions are labelled with a text badge, never by colour alone.
+  - Each chart is paired with a table of the same numbers.
+  - Lists are paginated on the server.
+  - Nothing is shown as done until the API confirms it.
+  - Untrusted text is rendered only as React text.
+- **Dependencies.** `recharts` 3.10.1 (listed in §13.1, first used now) with its peer `react-is` 19.3.1, and `@axe-core/playwright` 4.13.0 (dev, listed in §13.1). 4.14.0 was skipped because it was published two days earlier.
+- Reason: the user's Phase 9 brief.
+- **Bridge behaviour observed in the real end-to-end run (amends AMD-19).**
+  - Google sometimes redirects the result URL of an Apps Script call more than once, and in about 1 of 16 probed calls the chain ended on Google's HTML "Error" page after ~19 s. Healthy calls took 2–19 s.
+  - **Redirects:** `BridgeClient` now follows at most three hops between `script.google.com` and `script.googleusercontent.com`, never to another host.
+  - **Error page:** a non-JSON answer reached through Google's own redirect chain is `provider_unavailable`. It is retryable, and ambiguous for writes, so it is reconciled by reading before any rewrite. It is no longer `integration_misconfigured`. A non-JSON answer straight from the deployment URL (sign-in page, removed deployment) is still `integration_misconfigured`.
+  - **Timeout:** the default `SHEETS_TIMEOUT_SECONDS` rises from 20 to 45.

@@ -9,11 +9,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { postJson } from "@/lib/api/client";
 import { ApiProblem, type Integration } from "@/lib/api/types";
+import { useHydrated } from "@/lib/use-hydrated";
 
 type Bound = Integration & { verification_code: string; verify_cell: string };
 
 /** Bind a spreadsheet and prove ownership with a one-time code (SEC-17). */
 export function ConnectSheet({ businessId, pending }: { businessId: string; pending: Integration | null }) {
+  const hydrated = useHydrated();
   const router = useRouter();
   const [spreadsheet, setSpreadsheet] = useState("");
   const [bound, setBound] = useState<Bound | null>(null);
@@ -63,7 +65,7 @@ export function ConnectSheet({ businessId, pending }: { businessId: string; pend
             maxLength={300}
           />
           <div>
-            <Button type="submit" disabled={busy}>
+            <Button type="submit" disabled={!hydrated || busy}>
               {busy ? "Connecting…" : "Connect"}
             </Button>
           </div>

@@ -13,6 +13,18 @@
     --color-sidebar-primary: var(--sidebar-primary);
     --color-sidebar-foreground: var(--sidebar-foreground);
     --color-sidebar: var(--sidebar);
+    --color-fact: var(--fact);
+    --color-fact-foreground: var(--fact-foreground);
+    --color-hypothesis: var(--hypothesis);
+    --color-hypothesis-foreground: var(--hypothesis-foreground);
+    --color-estimate: var(--estimate);
+    --color-estimate-foreground: var(--estimate-foreground);
+    --color-human: var(--human);
+    --color-human-foreground: var(--human-foreground);
+    --color-action: var(--action);
+    --color-action-foreground: var(--action-foreground);
+    --color-risk: var(--risk);
+    --color-risk-foreground: var(--risk-foreground);
     --color-chart-5: var(--chart-5);
     --color-chart-4: var(--chart-4);
     --color-chart-3: var(--chart-3);
@@ -70,6 +82,19 @@
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
     --radius: 0.625rem;
+    /* Kinds of statement (Phase 9): each pair meets WCAG 2.2 AA (≥ 4.5:1). */
+    --fact: oklch(0.95 0.03 250);
+    --fact-foreground: oklch(0.38 0.13 255);
+    --hypothesis: oklch(0.96 0.05 85);
+    --hypothesis-foreground: oklch(0.42 0.09 65);
+    --estimate: oklch(0.95 0.03 300);
+    --estimate-foreground: oklch(0.4 0.13 300);
+    --human: oklch(0.95 0.03 190);
+    --human-foreground: oklch(0.38 0.07 195);
+    --action: oklch(0.95 0.04 150);
+    --action-foreground: oklch(0.38 0.1 150);
+    --risk: oklch(0.96 0.03 27);
+    --risk-foreground: oklch(0.45 0.17 27);
     --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: oklch(0.145 0 0);
     --sidebar-primary: oklch(0.205 0 0);

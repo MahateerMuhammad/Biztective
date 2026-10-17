@@ -28,6 +28,7 @@ async function signIn(page: Page) {
 }
 
 async function uploadFiles(page: Page, content: Record<string, string>) {
+  await page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: "Data" }).click();
   await page.getByRole("link", { name: "Upload dataset" }).click();
   await expect(page.getByRole("heading", { name: "Upload dataset" })).toBeVisible();
   for (const [kind, body] of Object.entries(content)) {

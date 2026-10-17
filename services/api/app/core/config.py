@@ -48,7 +48,8 @@ class Settings(BaseSettings):
 
     # Google Sheets execution (AMD-18). Base64 of the service-account key file; backend only.
     google_service_account_json: SecretStr | None = None
-    sheets_timeout_seconds: float = Field(default=20.0, gt=0, le=120)
+    # Apps Script calls were observed taking up to ~19 s when healthy (AMD-19).
+    sheets_timeout_seconds: float = Field(default=45.0, gt=0, le=120)
     sheets_max_retries: int = Field(default=4, ge=0, le=8)
     sheets_backoff_seconds: float = Field(default=1.0, ge=0, le=30)
     # AMD-19: Apps Script web app of the business's spreadsheet, and its shared token.

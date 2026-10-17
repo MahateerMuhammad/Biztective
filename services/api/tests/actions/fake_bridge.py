@@ -14,6 +14,7 @@ from tests.actions.fake_google import RANGE, FakeGoogle, ProcessDied
 
 BRIDGE_URL = "https://script.google.com/macros/s/AKfycbTestDeploymentId_0123456789abcdef/exec"
 TOKEN = "bridge-token-" + "x" * 40
+ECHO = "https://script.googleusercontent.com/macros/echo"
 OPS = {
     "titles": "metadata",
     "add_tabs": "add_tabs",
@@ -36,7 +37,16 @@ class FakeBridge:
 
     async def handle(self, request: httpx.Request) -> httpx.Response:
         if request.url.host == "script.googleusercontent.com":
-            return httpx.Response(200, json=self.answers.pop(request.url.params["id"]))
+            key = request.url.params["id"]
+            hops = int(request.url.params.get("hops", "0"))
+            if request.url.params.get("error"):  # Google's generic HTML error page
+                return httpx.Response(200, text="<html><title>Error</title></html>")
+            if hops > 0:  # Google redirecting its own result URL again
+                return httpx.Response(
+                    302,
+                    headers={"Location": f"{ECHO}?id={key}&hops={hops - 1}"},
+                )
+            return httpx.Response(200, json=self.answers.pop(key))
         if str(request.url) != BRIDGE_URL or request.method != "POST":
             raise AssertionError(f"request outside the bridge allowlist: {request.url}")
         body = json.loads(request.content)
@@ -62,9 +72,9 @@ class FakeBridge:
             raise ProcessDied
         key = str(next(self.counter))
         self.answers[key] = answer
-        return httpx.Response(
-            302, headers={"Location": f"https://script.googleusercontent.com/macros/echo?id={key}"}
-        )
+        hops = {"extra_hop": 1, "redirect_loop": 99}.get(fault or "", 0)
+        error = "&error=1" if fault == "error_page" else ""
+        return httpx.Response(302, headers={"Location": f"{ECHO}?id={key}&hops={hops}{error}"})
 
     def _answer(self, body: dict[str, Any]) -> dict[str, Any]:
         if body.get("token") != self.token:

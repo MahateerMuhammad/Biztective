@@ -203,3 +203,42 @@ async def test_bridge_token_never_leaks(
     assert TOKEN not in logged
     assert all(TOKEN not in b for b in bodies)
     assert str(uuid.UUID(action_id)) in bodies[1]
+
+
+async def test_extra_redirect_hops_are_followed_and_loops_reconciled(
+    app: FastAPI,
+    client: httpx.AsyncClient,
+    owner: Tenant,
+    google: FakeGoogle,
+    bridge: FakeBridge,
+) -> None:
+    """Seen live: Google sometimes redirects its result URL again. A bounded chain between the
+    two Apps Script hosts is followed; an endless one is transient, and after a write it is
+    reconciled by reading, never by writing blindly."""
+    _, action_id = await started(app, client, owner, google)
+    google.fail("read", "extra_hop")
+    google.fail("append", "redirect_loop")
+    await run_jobs(app)
+    done = await action(client, owner, action_id)
+    assert done["status"] == "verified", (done["error_code"], done["attempts"])
+    assert len(rows_of(google, REVIEW)) == 1  # the looping write had landed: not repeated
+    assert google.ops("append") == 1
+
+
+async def test_googles_html_error_page_is_transient_not_misconfiguration(
+    app: FastAPI,
+    client: httpx.AsyncClient,
+    owner: Tenant,
+    google: FakeGoogle,
+    bridge: FakeBridge,
+) -> None:
+    """Seen live (1 call in 16): the redirect chain ends on Google's HTML "Error" page. Reads
+    retry; a write whose answer was lost is reconciled, so the row exists exactly once."""
+    _, action_id = await started(app, client, owner, google)
+    google.fail("read", "error_page")
+    google.fail("append", "error_page")
+    await run_jobs(app)
+    done = await action(client, owner, action_id)
+    assert done["status"] == "verified", (done["error_code"], done["attempts"])
+    assert len(rows_of(google, REVIEW)) == 1
+    assert google.ops("append") == 1

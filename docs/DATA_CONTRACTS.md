@@ -458,6 +458,8 @@ Every answer endpoint returns 409 `invalid_state` unless the target is awaiting 
 
 ### 7.8 Recovery actions
 
+> **Amended by AMD-20 (Phase 9):** `GET /recovery-plans?limit&cursor` lists every plan of the business (newest first, with `execution_status`); `GET /investigations` gains `cursor` and returns `next_cursor`.
+
 > **Amended by AMD-18 (Phase 8):** `POST /recovery-plans/{pid}/actions` `{version, content_hash}` (`action:execute`, 202 new / 200 existing), `GET /recovery-plans/{pid}/actions`, `GET /actions/{aid}` (`investigation:read`, with attempts and audit), `POST /actions/{aid}/retry` (`action:retry`, from `failed` or `manual_review`). The per-action PATCH/approve/reject/revoke/resolve routes below are not built.
 
 | Method | Path | Permission | Notes |

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { postJson } from "@/lib/api/client";
 import { ApiProblem, type Clarification } from "@/lib/api/types";
+import { useHydrated } from "@/lib/use-hydrated";
 
 const FREE_TEXT_MAX = 1000;
 /** The question changed under the person (answered elsewhere, or the investigation moved on). */
@@ -26,6 +27,7 @@ export function QuestionForm({
   investigationId: string;
   clarification: Clarification;
 }) {
+  const hydrated = useHydrated();
   const router = useRouter();
   const [option, setOption] = useState<string>("");
   const [freeText, setFreeText] = useState("");
@@ -122,7 +124,7 @@ export function QuestionForm({
         </Alert>
       ) : null}
       <div>
-        <Button type="submit" disabled={empty || submitting}>
+        <Button type="submit" disabled={!hydrated || empty || submitting}>
           {submitting ? "Sending…" : "Send answer"}
         </Button>
       </div>

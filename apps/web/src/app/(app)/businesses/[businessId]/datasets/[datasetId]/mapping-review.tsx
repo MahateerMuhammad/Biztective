@@ -7,6 +7,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { postJson } from "@/lib/api/client";
 import { ApiProblem, type FileMapping } from "@/lib/api/types";
+import { useHydrated } from "@/lib/use-hydrated";
 
 export interface ReviewFile {
   kind: string;
@@ -45,6 +46,7 @@ export function MappingReview({
     ),
   );
   const [error, setError] = useState<{ message: string; details: string[] } | null>(null);
+  const hydrated = useHydrated();
   const [submitting, setSubmitting] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -129,7 +131,7 @@ export function MappingReview({
         </Alert>
       ) : null}
       <div>
-        <Button type="submit" disabled={submitting}>
+        <Button type="submit" disabled={!hydrated || submitting}>
           {submitting ? "Saving…" : "Confirm mapping and validate"}
         </Button>
       </div>

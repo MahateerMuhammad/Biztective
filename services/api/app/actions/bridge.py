@@ -3,7 +3,8 @@
 The script (integrations/apps_script/Code.gs) runs as the spreadsheet owner, accepts only its
 own spreadsheet and a shared token, and offers the same five operations as the REST client.
 The token travels in the JSON body, never in a URL. Apps Script answers a POST with a redirect
-to `script.googleusercontent.com`; only that single hop is followed (SEC-15).
+to `script.googleusercontent.com`; at most three hops between the two Apps Script hosts are
+followed, never to another host (SEC-15).
 """
 
 import re
@@ -16,7 +17,9 @@ from app.actions.sheets import RetryingClient, SheetsError, _retry_after
 # Any is confined to the JSON bodies exchanged with the script.
 
 BRIDGE_URL = re.compile(r"^https://script\.google\.com/macros/s/[A-Za-z0-9_-]{20,200}/exec$")
-REDIRECT_HOST = "script.googleusercontent.com"
+REDIRECT_HOSTS = frozenset({"script.googleusercontent.com", "script.google.com"})
+REDIRECTS = frozenset({301, 302, 303, 307, 308})
+MAX_HOPS = 3
 CODES = {
     401: "integration_credentials_invalid",
     403: "integration_permission_denied",
@@ -38,11 +41,23 @@ class BridgeClient(RetryingClient):
                 write=write,
                 json={"token": self.token, "op": op, "spreadsheet_id": sid, "args": args},
             )
-            if response.status_code in (301, 302, 303, 307, 308):
+            hops = 0
+            while response.status_code in REDIRECTS:
                 location = response.headers.get("Location", "")
                 parts = urlsplit(location)
-                if parts.scheme != "https" or parts.hostname != REDIRECT_HOST:
+                if parts.scheme != "https" or parts.hostname not in REDIRECT_HOSTS:
+                    # A sign-in page or any other host: never followed.
                     raise SheetsError("integration_misconfigured", status=response.status_code)
+                if hops == MAX_HOPS:
+                    # Google kept redirecting its own result URL: transient, and for a write
+                    # the script may already have run.
+                    raise SheetsError(
+                        "provider_unavailable",
+                        status=response.status_code,
+                        retryable=True,
+                        ambiguous=write,
+                    )
+                hops += 1
                 # The script has already run; fetching its answer can still fail ambiguously.
                 response = await self._send(op, "GET", location, write=write)
             if response.status_code == 429 or response.status_code >= 500:
@@ -56,7 +71,16 @@ class BridgeClient(RetryingClient):
             try:
                 body = response.json()
             except ValueError as exc:
-                # A sign-in page: the deployment is not "Anyone" or was removed.
+                if hops:
+                    # Seen live: Google's own result URL occasionally ends on its generic
+                    # HTML "Error" page. Transient; for a write the script may have run.
+                    raise SheetsError(
+                        "provider_unavailable",
+                        status=response.status_code,
+                        retryable=True,
+                        ambiguous=write,
+                    ) from exc
+                # Straight from the deployment URL: removed, or not deployed for "Anyone".
                 raise SheetsError("integration_misconfigured", status=response.status_code) from exc
             if response.status_code != 200 or not isinstance(body, dict):
                 raise SheetsError("integration_misconfigured", status=response.status_code)

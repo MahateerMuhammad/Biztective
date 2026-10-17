@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { postJson } from "@/lib/api/client";
 import { ApiProblem, type ActionType, type PlanDetail } from "@/lib/api/types";
 import { formatMoney, formatPercent } from "@/lib/format";
+import { useHydrated } from "@/lib/use-hydrated";
 
 /** The plan changed under the person: reload instead of retrying. */
 const RELOAD_CODES = new Set([
@@ -106,6 +107,7 @@ export function DecisionPanel({ businessId, plan, role }: { businessId: string; 
   const awaiting = plan.awaiting;
   const approved = plan.status === "approved";
   const [mode, setMode] = useState<Mode>(null);
+  const hydrated = useHydrated();
   const [reason, setReason] = useState("");
   const [key, setKey] = useState(newKey);
   const [busy, setBusy] = useState(false);
@@ -208,7 +210,7 @@ export function DecisionPanel({ businessId, plan, role }: { businessId: string; 
           </p>
           <details>
             <summary>Exact plan content</summary>
-            <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all text-xs">{JSON.stringify(c, null, 2)}</pre>
+            <pre tabIndex={0} aria-label="Exact plan content" className="max-h-64 overflow-auto whitespace-pre-wrap break-all text-xs">{JSON.stringify(c, null, 2)}</pre>
           </details>
           <div className="flex gap-2">
             <Button type="button" onClick={() => submit("approve")} disabled={busy}>
@@ -237,7 +239,7 @@ export function DecisionPanel({ businessId, plan, role }: { businessId: string; 
           </Field>
           <p className="text-xs text-muted-foreground">Rejecting is final for this plan and has no effect outside ROOT.</p>
           <div>
-            <Button type="submit" disabled={busy}>
+            <Button type="submit" disabled={!hydrated || busy}>
               {busy ? "Rejecting…" : "Confirm rejection"}
             </Button>
           </div>
@@ -365,7 +367,7 @@ export function DecisionPanel({ businessId, plan, role }: { businessId: string; 
             />
           </Field>
           <div>
-            <Button type="submit" disabled={busy || Object.keys(edits).length === 0}>
+            <Button type="submit" disabled={!hydrated || busy || Object.keys(edits).length === 0}>
               {busy ? "Saving…" : approved ? "Save as a new version" : "Recalculate with these changes"}
             </Button>
           </div>

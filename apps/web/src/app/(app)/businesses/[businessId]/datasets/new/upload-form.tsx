@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { postForm } from "@/lib/api/client";
 import { ApiProblem, type DatasetDetail } from "@/lib/api/types";
+import { useHydrated } from "@/lib/use-hydrated";
 
 const FILES = [
   { kind: "orders", label: "Orders", hint: "One row per order line" },
@@ -40,6 +41,7 @@ export function UploadForm({
 }) {
   const router = useRouter();
   const [error, setError] = useState<UploadError | null>(null);
+  const hydrated = useHydrated();
   const [submitting, setSubmitting] = useState(false);
   // Reused across retries of the same submission so a retry never creates a second version.
   const idempotencyKey = useRef<string | null>(null);
@@ -116,7 +118,7 @@ export function UploadForm({
         </Alert>
       ) : null}
       <div>
-        <Button type="submit" disabled={submitting}>
+        <Button type="submit" disabled={!hydrated || submitting}>
           {submitting ? "Uploading…" : "Upload and validate"}
         </Button>
       </div>

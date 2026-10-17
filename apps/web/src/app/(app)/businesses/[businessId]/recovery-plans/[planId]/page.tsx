@@ -7,13 +7,15 @@ import { DecisionPanel } from "@/components/recovery/decision-panel";
 import { ExecutionHistory } from "@/components/recovery/execution-history";
 import { ExecutionPanel } from "@/components/recovery/execution-panel";
 import { StrategyCard } from "@/components/recovery/strategy-card";
+import { StrategyComparison } from "@/components/recovery/strategy-comparison";
+import { KindBadge } from "@/components/kind-badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getAction, getBusiness, getPlan } from "@/lib/api/server";
 import type { ActionDetail, PlanDecisionView, PlanStatus } from "@/lib/api/types";
 import { PLAN_ISSUES, formatMoney } from "@/lib/format";
 
-export const metadata: Metadata = { title: "Recovery plan" };
+export const metadata: Metadata = { title: "Decision center" };
 
 const STATUS_TEXT: Record<PlanStatus, string> = {
   queued: "Preparing…",
@@ -47,9 +49,15 @@ export default async function PlanPage({ params }: PageProps<"/businesses/[busin
     <div className="grid gap-6">
       {working ? <AutoRefresh /> : null}
       <div>
-        <Link href={`/businesses/${businessId}/investigations/${plan.investigation_id}`} className="text-sm underline-offset-4 hover:underline">
-          ← Investigation
-        </Link>
+        <nav aria-label="Breadcrumb" className="flex flex-wrap gap-2 text-sm">
+          <Link href={`/businesses/${businessId}/decisions`} className="underline-offset-4 hover:underline">
+            ← Decision center
+          </Link>
+          <span aria-hidden="true">·</span>
+          <Link href={`/businesses/${businessId}/investigations/${plan.investigation_id}`} className="underline-offset-4 hover:underline">
+            Source investigation
+          </Link>
+        </nav>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight">Recovery plan</h1>
         <p className="mt-1 text-sm" role="status" aria-live="polite">
           {STATUS_TEXT[plan.status]}
@@ -144,9 +152,26 @@ export default async function PlanPage({ params }: PageProps<"/businesses/[busin
             </CardContent>
           </Card>
 
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                <h2 className="flex items-center gap-2 text-base font-semibold">
+                  Cost and trade-off comparison <KindBadge kind="estimate" />
+                </h2>
+              </CardTitle>
+              <CardDescription>
+                Over {content.constraints.horizon_weeks} weeks. Change assumptions, budget or selection with “Request changes”:
+                every change creates a new version that is recalculated and needs its own approval.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <StrategyComparison content={content} />
+            </CardContent>
+          </Card>
+
           <section className="grid gap-4" aria-labelledby="strategies-heading">
             <h2 id="strategies-heading" className="text-lg font-semibold">
-              Competing strategies
+              Strategy details and evidence
             </h2>
             {content.strategies.map((s) => (
               <StrategyCard
@@ -165,7 +190,7 @@ export default async function PlanPage({ params }: PageProps<"/businesses/[busin
         <Card>
           <CardHeader>
             <CardTitle>
-              <h2 className="text-base font-semibold">Decision history</h2>
+              <h2 className="text-base font-semibold">Decision audit history</h2>
             </CardTitle>
             <CardDescription>Every decision is kept, in order, and cannot be changed.</CardDescription>
           </CardHeader>

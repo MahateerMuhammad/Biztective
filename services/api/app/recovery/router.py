@@ -8,7 +8,7 @@ forbid extra fields: the approver, role, status and recorded hash come from the 
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
@@ -19,6 +19,7 @@ from app.audit.writer import record_audit
 from app.auth.dependencies import client_host
 from app.core.db import DbSession
 from app.core.errors import ApiError
+from app.core.pagination import Cursor, decode_uuid_cursor, encode_cursor
 from app.datasets import service as idempotency
 from app.investigation.facts import detection_facts, entity_token
 from app.investigation.render import Renderer
@@ -256,6 +257,45 @@ async def list_plans(db: DbSession, tenant: Reader, investigation_id: UUID) -> d
         .order_by(RecoveryPlan.created_at.desc())
     )
     return {"items": [_summary(p) for p in plans]}
+
+
+@router.get("/recovery-plans")
+async def list_business_plans(
+    db: DbSession,
+    tenant: Reader,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    cursor: Cursor = None,
+) -> dict[str, Any]:
+    """Every plan of the business, newest first (the Decision Center index)."""
+    query = (
+        select(RecoveryPlan)
+        .where(RecoveryPlan.business_id == tenant.business_id)
+        .order_by(RecoveryPlan.id.desc())
+        .limit(limit + 1)
+    )
+    if cursor is not None:
+        query = query.where(RecoveryPlan.id < decode_uuid_cursor(cursor))
+    rows = list(await db.scalars(query))
+    more = len(rows) > limit
+    rows = rows[:limit]
+    latest: dict[UUID, PlanAction] = {}
+    if rows:
+        for a in await db.scalars(
+            select(PlanAction)
+            .where(PlanAction.plan_id.in_([p.id for p in rows]))
+            .order_by(PlanAction.created_at)
+        ):
+            latest[a.plan_id] = a
+    return {
+        "items": [
+            {
+                **_summary(p),
+                "execution_status": latest[p.id].status if p.id in latest else None,
+            }
+            for p in rows
+        ],
+        "next_cursor": encode_cursor(str(rows[-1].id)) if more else None,
+    }
 
 
 @router.get("/recovery-plans/{plan_id}")

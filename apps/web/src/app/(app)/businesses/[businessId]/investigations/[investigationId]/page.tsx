@@ -3,15 +3,19 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { AutoRefresh } from "@/components/auto-refresh";
+import { Progress } from "@/components/investigation/progress";
+import { ProofChain } from "@/components/investigation/proof-chain";
 import { QuestionForm } from "@/components/investigation/question-form";
+import { KindBadge } from "@/components/kind-badge";
+import { Badge } from "@/components/ui/badge";
 import { StartPlan } from "@/components/recovery/start-plan";
 import { VersionDiff } from "@/components/investigation/version-diff";
 import { Segments } from "@/components/segments";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { compareVersions, getBusiness, getInvestigation, listPlans, listVersions } from "@/lib/api/server";
+import { compareVersions, getBusiness, getInvestigation, listEvents, listPlans, listVersions } from "@/lib/api/server";
 import type { InvestigationDetail, InvestigationIncident, InvestigationStatus } from "@/lib/api/types";
-import { STATUS_LABELS, templateLabel } from "@/lib/format";
+import { templateLabel } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Investigation" };
 
@@ -25,87 +29,27 @@ const STATUS_TEXT: Record<InvestigationStatus, string> = {
   insufficient_data: "Not enough history to investigate",
   failed: "Failed",
 };
-const INTERPRETATION = {
-  intended: "Deliberate business decision",
-  unintended: "Confirmed as unplanned",
-} as const;
 
-function percent(value: string | null): string {
-  return value === null ? "—" : `${(Number(value) * 100).toFixed(0)}%`;
-}
-
-function Incident({ incident }: { incident: InvestigationIncident }) {
-  const root = incident.hypotheses.find((h) => h.id === incident.root_cause_hypothesis_id);
-  const explained = incident.hypotheses.filter((h) => incident.explained_by_context.includes(h.id));
-  const conflicted = incident.hypotheses.filter((h) => h.conflicts.length > 0);
+function Incident({ incident, evidenceBase }: { incident: InvestigationIncident; evidenceBase: string }) {
   return (
-    <Card>
+    <Card id={`incident-${incident.id}`} className="scroll-mt-4">
       <CardHeader>
         <CardTitle>
-          <h3 className="text-base font-semibold">
-            #{incident.rank} · {incident.metric_label}
-            {incident.value ? ` in ${incident.dimension} “${incident.value}”` : ""}
+          <h3 className="flex flex-wrap items-center gap-2 text-base font-semibold">
+            <span className="text-muted-foreground tabular-nums">#{incident.rank}</span>
+            {incident.metric_label}
+            {incident.value ? ` in ${incident.dimension} “${incident.value}”` : " across the business"}
+            <Badge className="bg-muted uppercase">{incident.severity}</Badge>
           </h3>
         </CardTitle>
-        <CardDescription className="uppercase">{incident.severity}</CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-4 text-sm">
-        <ul className="grid gap-1" aria-label="Measured facts">
-          {incident.observations.map((o, i) => (
-            <li key={i}>
-              <Segments segments={o} />
-            </li>
-          ))}
-        </ul>
-        <div className="grid gap-1">
-          <p>
-            <span className="font-medium">Root cause: </span>
-            {root ? templateLabel(root.template) : "No unplanned cause is supported"}
-          </p>
-          {explained.map((h) => (
-            <p key={h.id}>
-              <span className="font-medium">Explained by your context: </span>
-              {templateLabel(h.template)} ({INTERPRETATION.intended.toLowerCase()}; its measured
-              impact is unchanged)
-            </p>
-          ))}
-          {conflicted.map((h) => (
-            <p key={h.id} role="note">
-              <span className="font-medium">Conflict: </span>
-              an answer about {templateLabel(h.template).toLowerCase()} contradicts the measured
-              data. The measurements were kept.
-            </p>
-          ))}
-        </div>
-        <table className="w-full text-left">
-          <caption className="sr-only">Competing explanations and their deterministic verdicts</caption>
-          <thead>
-            <tr className="border-b">
-              <th scope="col" className="py-1 font-medium">Explanation</th>
-              <th scope="col" className="py-1 font-medium">Status</th>
-              <th scope="col" className="py-1 text-right font-medium">Confidence</th>
-              <th scope="col" className="py-1 font-medium">Interpretation</th>
-            </tr>
-          </thead>
-          <tbody>
-            {incident.hypotheses.map((h) => (
-              <tr key={h.id} className="border-b last:border-0">
-                <th scope="row" className="py-1 font-normal">
-                  {templateLabel(h.template)}
-                  {h.source === "human_context" ? (
-                    <span className="block text-xs text-muted-foreground">added after your answer</span>
-                  ) : null}
-                </th>
-                <td className="py-1">{STATUS_LABELS[h.status] ?? h.status}</td>
-                <td className="py-1 text-right tabular-nums">{percent(h.confidence)}</td>
-                <td className="py-1">{h.interpretation ? INTERPRETATION[h.interpretation] : "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <CardContent className="grid gap-5 text-sm">
+        <ProofChain incident={incident} evidenceBase={evidenceBase} />
         {incident.human_context.length > 0 ? (
           <div className="grid gap-1">
-            <h4 className="font-medium">Context you provided</h4>
+            <h4 className="flex items-center gap-2 font-medium">
+              Context you provided <KindBadge kind="human" />
+            </h4>
             <ul className="grid gap-1">
               {incident.human_context.map((c) => (
                 <li key={c.human_input_id}>
@@ -129,6 +73,49 @@ function Incident({ incident }: { incident: InvestigationIncident }) {
             </ul>
           </div>
         ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** What is still unknown, in one place: undecided explanations, missing data and caveats. */
+function Uncertainties({ investigation }: { investigation: InvestigationDetail }) {
+  const items: { key: string; text: string }[] = [];
+  for (const incident of investigation.incidents.filter((i) => i.investigated)) {
+    for (const h of incident.hypotheses) {
+      if (h.status === "inconclusive" || h.status === "needs_human_context") {
+        items.push({
+          key: `${incident.id}-${h.id}`,
+          text: `#${incident.rank}: “${templateLabel(h.template)}” is ${h.status === "inconclusive" ? "inconclusive — the data does not settle it" : "waiting for context only you can give"}.`,
+        });
+      }
+    }
+    for (const g of incident.data_gaps) {
+      items.push({ key: `${incident.id}-${g.template}-${g.criterion}`, text: `#${incident.rank}: ${g.reason}` });
+    }
+  }
+  for (const r of investigation.restrictions) items.push({ key: r.code, text: r.message });
+  const caveats = investigation.findings?.rendered.caveats ?? [];
+  if (items.length === 0 && caveats.length === 0) return null;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>
+          <h2 className="text-base font-semibold">Unresolved uncertainties</h2>
+        </CardTitle>
+        <CardDescription>ROOT does not guess. These points are open, and the conclusions above account for them.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ul className="grid list-disc gap-1 pl-5 text-sm">
+          {items.map((i) => (
+            <li key={i.key}>{i.text}</li>
+          ))}
+          {caveats.map((c, i) => (
+            <li key={`caveat-${i}`}>
+              <Segments segments={c} />
+            </li>
+          ))}
+        </ul>
       </CardContent>
     </Card>
   );
@@ -182,11 +169,12 @@ export default async function InvestigationPage({
 }: PageProps<"/businesses/[businessId]/investigations/[investigationId]">) {
   const { businessId, investigationId } = await params;
   const query = await searchParams;
-  const [business, investigation, versions, plans] = await Promise.all([
+  const [business, investigation, versions, plans, events] = await Promise.all([
     getBusiness(businessId),
     getInvestigation(businessId, investigationId),
     listVersions(businessId, investigationId),
     listPlans(businessId, investigationId),
+    listEvents(businessId, investigationId),
   ]);
   if (!business || !investigation) notFound();
   const latest = versions.at(-1)?.version ?? 0;
@@ -196,134 +184,187 @@ export default async function InvestigationPage({
   const awaiting = investigation.awaiting;
   const working = WORKING.includes(investigation.status);
   const canAnswer = business.role !== "viewer";
+  const investigated = investigation.incidents.filter((i) => i.investigated);
+  const evidenceBase = `/businesses/${businessId}/evidence`;
+  const openPlan = plans.find((p) => ["queued", "running", "awaiting_decision", "approved"].includes(p.status));
 
   return (
     <div className="grid gap-6">
       {working ? <AutoRefresh /> : null}
-      <div>
-        <Link href={`/businesses/${businessId}/datasets/${investigation.dataset_id}/analytics`} className="text-sm underline-offset-4 hover:underline">
-          ← Analytics
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <Link href={`/businesses/${businessId}/investigations`} className="text-sm underline-offset-4 hover:underline">
+            ← Investigations
+          </Link>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight">Investigation workspace</h1>
+          <p className="mt-1 text-sm" role="status" aria-live="polite">
+            {STATUS_TEXT[investigation.status]}
+            {investigation.version ? ` · version ${investigation.version}` : ""}
+            {investigation.llm_mode === "deterministic" ? " · deterministic mode" : " · AI-assisted wording"}
+          </p>
+          {investigation.status === "failed" ? (
+            <p className="text-sm text-muted-foreground">Error: {investigation.error_code}</p>
+          ) : null}
+        </div>
+        <Link
+          href={`/businesses/${businessId}/datasets/${investigation.dataset_id}/analytics`}
+          className="text-sm underline-offset-4 hover:underline"
+        >
+          Source analytics
         </Link>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">Investigation workspace</h1>
-        <p className="mt-1 text-sm" role="status" aria-live="polite">
-          {STATUS_TEXT[investigation.status]}
-          {investigation.version ? ` · version ${investigation.version}` : ""}
-          {investigation.llm_mode === "deterministic" ? " · deterministic mode" : " · AI-assisted wording"}
-        </p>
-        {investigation.status === "failed" ? (
-          <p className="text-sm text-muted-foreground">Error: {investigation.error_code}</p>
-        ) : null}
       </div>
 
-      {awaiting ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              <h2 className="text-base font-semibold">ROOT needs your input</h2>
-            </CardTitle>
-            <CardDescription id={`why-${awaiting.id}`}>
-              {awaiting.why} About: {awaiting.claim}{" "}
-              <span className="font-mono text-xs">({awaiting.incident_key})</span>
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {canAnswer ? (
-              <QuestionForm businessId={businessId} investigationId={investigation.id} clarification={awaiting} />
-            ) : (
-              <Alert>
-                <AlertTitle>{awaiting.question}</AlertTitle>
-                <AlertDescription>An owner or analyst of this business can answer.</AlertDescription>
-              </Alert>
-            )}
-          </CardContent>
-        </Card>
-      ) : null}
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <div className="grid min-w-0 content-start gap-6">
+          {awaiting ? (
+            <Card className="border-human-foreground/40">
+              <CardHeader>
+                <CardTitle>
+                  <h2 className="flex items-center gap-2 text-base font-semibold">
+                    ROOT needs your input <KindBadge kind="human" />
+                  </h2>
+                </CardTitle>
+                <CardDescription id={`why-${awaiting.id}`}>
+                  {awaiting.why} About: {awaiting.claim}{" "}
+                  <span className="font-mono text-xs">({awaiting.incident_key})</span>
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {canAnswer ? (
+                  <QuestionForm businessId={businessId} investigationId={investigation.id} clarification={awaiting} />
+                ) : (
+                  <Alert>
+                    <AlertTitle>{awaiting.question}</AlertTitle>
+                    <AlertDescription>An owner or analyst of this business can answer.</AlertDescription>
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
+          ) : null}
 
-      <Findings investigation={investigation} />
+          <Findings investigation={investigation} />
 
-      {investigation.status === "completed" ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              <h2 className="text-base font-semibold">Recovery plan</h2>
-            </CardTitle>
-            <CardDescription>
-              Compare competing responses to the validated findings, set your budget and limits, and approve or reject. Nothing is
-              executed.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-2 text-sm">
-            {plans.length > 0 ? (
-              <ul className="grid gap-1" aria-label="Recovery plans">
-                {plans.map((p) => (
-                  <li key={p.id}>
-                    <Link href={`/businesses/${businessId}/recovery-plans/${p.id}`} className="underline-offset-4 hover:underline">
-                      Plan from {p.created_at.slice(0, 16).replace("T", " ")}: {p.status.replaceAll("_", " ")}
-                      {p.current_version ? ` (version ${p.current_version})` : ""}
+          {investigation.status === "completed" ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  <h2 className="flex items-center gap-2 text-base font-semibold">
+                    Decide what to do <KindBadge kind="action" />
+                  </h2>
+                </CardTitle>
+                <CardDescription>
+                  Turn the validated findings into competing recovery strategies, set your limits, and approve or reject in the
+                  Decision center. Nothing happens outside ROOT until an owner approves and starts it.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-2 text-sm">
+                {plans.length > 0 ? (
+                  <ul className="grid gap-1" aria-label="Recovery plans">
+                    {plans.map((p) => (
+                      <li key={p.id}>
+                        <Link href={`/businesses/${businessId}/recovery-plans/${p.id}`} className="font-medium underline-offset-4 hover:underline">
+                          Plan from {p.created_at.slice(0, 16).replace("T", " ")}: {p.status.replaceAll("_", " ")}
+                          {p.current_version ? ` (version ${p.current_version})` : ""}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {canAnswer && !openPlan ? <StartPlan businessId={businessId} investigationId={investigation.id} /> : null}
+              </CardContent>
+            </Card>
+          ) : null}
+
+          <section className="grid gap-4" aria-labelledby="incidents-heading">
+            <h2 id="incidents-heading" className="text-lg font-semibold">
+              Incidents and their proof
+            </h2>
+            {investigated.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{working ? "The agent is still working through the incidents…" : "No incident was investigated."}</p>
+            ) : null}
+            {investigated.map((incident) => (
+              <Incident key={incident.id} incident={incident} evidenceBase={evidenceBase} />
+            ))}
+          </section>
+
+          {latest >= 2 ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  <h2 className="text-base font-semibold">Investigation replay</h2>
+                </CardTitle>
+                <CardDescription>Each answer created a new version. Compare what ROOT concluded before and after.</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-4">
+                <nav aria-label="Versions" className="flex flex-wrap gap-2 text-sm">
+                  {versions.slice(1).map((v) => (
+                    <Link
+                      key={v.version}
+                      href={`?from=${v.version - 1}&to=${v.version}`}
+                      className="rounded-md border px-2 py-1 underline-offset-4 hover:underline aria-[current=page]:bg-muted"
+                      aria-current={from === v.version - 1 && to === v.version ? "page" : undefined}
+                    >
+                      v{v.version - 1} → v{v.version}
                     </Link>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            {canAnswer && !plans.some((p) => ["queued", "running", "awaiting_decision", "approved"].includes(p.status)) ? (
-              <StartPlan businessId={businessId} investigationId={investigation.id} />
-            ) : null}
-          </CardContent>
-        </Card>
-      ) : null}
+                  ))}
+                  <Link
+                    href={`?from=1&to=${latest}`}
+                    className="rounded-md border px-2 py-1 underline-offset-4 hover:underline aria-[current=page]:bg-muted"
+                    aria-current={from === 1 && to === latest ? "page" : undefined}
+                  >
+                    v1 → v{latest} (all answers)
+                  </Link>
+                </nav>
+                {comparison ? (
+                  <>
+                    <h3 className="font-medium">
+                      Version {comparison.from_version} → version {comparison.to_version}
+                    </h3>
+                    <VersionDiff comparison={comparison} />
+                  </>
+                ) : null}
+              </CardContent>
+            </Card>
+          ) : null}
+        </div>
 
-      <section className="grid gap-4" aria-labelledby="incidents-heading">
-        <h2 id="incidents-heading" className="text-lg font-semibold">
-          Incidents
-        </h2>
-        {investigation.incidents
-          .filter((i) => i.investigated)
-          .map((incident) => (
-            <Incident key={incident.id} incident={incident} />
-          ))}
-      </section>
-
-      {latest >= 2 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              <h2 className="text-base font-semibold">Investigation replay</h2>
-            </CardTitle>
-            <CardDescription>
-              Each answer created a new version. Compare what ROOT concluded before and after.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4">
-            <nav aria-label="Versions" className="flex flex-wrap gap-2 text-sm">
-              {versions.slice(1).map((v) => (
-                <Link
-                  key={v.version}
-                  href={`?from=${v.version - 1}&to=${v.version}`}
-                  className="rounded-md border px-2 py-1 underline-offset-4 hover:underline"
-                  aria-current={from === v.version - 1 && to === v.version ? "page" : undefined}
-                >
-                  v{v.version - 1} → v{v.version}
-                </Link>
-              ))}
-              <Link
-                href={`?from=1&to=${latest}`}
-                className="rounded-md border px-2 py-1 underline-offset-4 hover:underline"
-                aria-current={from === 1 && to === latest ? "page" : undefined}
-              >
-                v1 → v{latest} (all answers)
-              </Link>
-            </nav>
-            {comparison ? (
-              <>
-                <h3 className="font-medium">
-                  Version {comparison.from_version} → version {comparison.to_version}
-                </h3>
-                <VersionDiff comparison={comparison} />
-              </>
-            ) : null}
-          </CardContent>
-        </Card>
-      ) : null}
+        <aside className="grid content-start gap-6" aria-label="Investigation overview">
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                <h2 className="text-base font-semibold">Agent progress</h2>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Progress events={events.items} working={working} />
+            </CardContent>
+          </Card>
+          {investigated.length > 1 ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  <h2 className="text-base font-semibold">Incidents</h2>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <nav aria-label="Jump to incident">
+                  <ol className="grid gap-1 text-sm">
+                    {investigated.map((i) => (
+                      <li key={i.id}>
+                        <a href={`#incident-${i.id}`} className="underline-offset-4 hover:underline">
+                          #{i.rank} {i.metric_label}
+                          {i.value ? ` · ${i.value}` : ""}
+                        </a>
+                      </li>
+                    ))}
+                  </ol>
+                </nav>
+              </CardContent>
+            </Card>
+          ) : null}
+          <Uncertainties investigation={investigation} />
+        </aside>
+      </div>
     </div>
   );
 }

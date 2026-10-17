@@ -149,6 +149,8 @@ jobs:
           uv run alembic upgrade head
           DEMO_OWNER_PASSWORD="$E2E_PASSWORD" uv run python -m app.cli seed-demo
           echo "DATABASE_URL=postgresql+psycopg://root_app:$APP_PW@localhost:5432/root" >> "$GITHUB_ENV"
+          # The tenancy E2E test seeds a second, unrelated business with the same CLI.
+          echo "DATABASE_URL_MIGRATIONS=postgresql+psycopg://root_owner@localhost:5432/root" >> "$GITHUB_ENV"
       - name: Build web app
         working-directory: apps/web
         run: |
