@@ -1,0 +1,121 @@
+product_id,product_name,category,unit_cost,list_price
+P0001,Bright Case 001,office,40.89,64.65
+P0002,Quill Lamp 002,kitchen,45.79,67.29
+P0003,Halo Case 003,audio,13.06,24.84
+P0004,Halo Brew 004,audio,9.92,20.62
+P0005,Rift Grip 005,home decor,8.80,14.65
+P0006,Sola Pod 006,outdoor,52.04,106.62
+P0007,Glow Shade 007,office,15.06,31.41
+P0008,Bright Lamp 008,beauty,67.09,98.98
+P0009,Kite Tray 009,beauty,82.61,158.04
+P0010,Flux Mat 010,office,45.31,76.94
+P0011,Kite Tray 011,home decor,70.21,142.54
+P0012,Quill Tote 012,outdoor,74.25,110.47
+P0013,Pulse Tote 013,kitchen,91.59,144.93
+P0014,Rift Set 014,travel,115.56,172.55
+P0015,Sola Tray 015,office,84.35,178.25
+P0016,Pulse Case 016,kitchen,101.28,256.60
+P0017,Sola Tray 017,home decor,88.55,156.87
+P0018,Lumen Blend 018,beauty,86.85,214.04
+P0019,Pulse Brew 019,fitness,44.59,95.12
+P0020,Halo Stand 020,audio,92.88,144.45
+P0021,Flux Tray 021,audio,110.27,220.08
+P0022,Nova Pack 022,audio,67.28,165.51
+P0023,Mesa Mat 023,outdoor,118.42,262.81
+P0024,Halo Blend 024,beauty,12.71,20.10
+P0025,Jade Blend 025,outdoor,100.24,162.27
+P0026,Sola Set 026,outdoor,52.02,95.88
+P0027,Terra Brew 027,beauty,83.79,169.14
+P0028,Rift Stand 028,audio,108.25,252.87
+P0029,Mesa Brew 029,fitness,49.68,75.72
+P0030,Flux Desk 030,travel,10.88,17.96
+P0031,Sola Grip 031,office,73.29,111.61
+P0032,Core Lamp 032,audio,114.03,243.62
+P0033,Lumen Shade 033,beauty,20.38,34.70
+P0034,Onyx Vase 034,beauty,17.37,42.01
+P0035,Kite Pack 035,beauty,39.49,62.12
+P0036,Aero Lamp 036,travel,99.98,159.34
+P0037,Aero Wrap 037,home decor,20.15,41.34
+P0038,Iris Wrap 038,travel,117.48,286.18
+P0039,Halo Wrap 039,travel,109.27,199.62
+P0040,Glow Mat 040,audio,77.46,165.44
+P0041,Quill Vase 041,travel,89.57,149.77
+P0042,Iris Vase 042,home decor,88.53,229.07
+P0043,Lumen Tray 043,travel,25.66,54.56
+P0044,Halo Desk 044,fitness,114.74,210.84
+P0045,Pulse Blend 045,beauty,58.00,104.71
+P0046,Core Desk 046,audio,109.38,198.28
+P0047,Pulse Kit 047,audio,94.53,217.43
+P0048,Mesa Tray 048,audio,95.33,171.50
+P0049,Flux Kit 049,outdoor,89.97,135.13
+P0050,Onyx Grip 050,beauty,6.22,13.12
+P0051,Rift Grip 051,kitchen,79.90,145.46
+P0052,Dune Wrap 052,outdoor,4.67,11.98
+P0053,Glow Blend 053,home decor,53.76,131.50
+P0054,Sola Set 054,home decor,27.90,55.84
+P0055,Bright Shade 055,beauty,66.69,160.12
+P0056,Quill Tote 056,outdoor,80.51,191.46
+P0057,Aero Tray 057,outdoor,65.22,132.28
+P0058,Echo Kit 058,outdoor,74.20,172.98
+P0059,Rift Brew 059,travel,58.40,132.58
+P0060,Pulse Desk 060,kitchen,82.83,168.71
+P0061,Dune Wrap 061,beauty,32.07,55.55
+P0062,Core Tray 062,travel,68.72,158.88
+P0063,Quill Lamp 063,home decor,74.67,149.84
+P0064,Pulse Wrap 064,fitness,55.92,114.07
+P0065,Iris Lamp 065,beauty,84.81,207.94
+P0066,Onyx Set 066,office,19.04,29.43
+P0067,Glow Pod 067,office,81.53,156.05
+P0068,Lumen Grip 068,home decor,107.95,171.14
+P0069,Halo Desk 069,audio,106.29,272.21
+P0070,Halo Kit 070,audio,106.54,169.97
+P0071,Nova Lamp 071,travel,119.31,224.85
+P0072,Aero Set 072,beauty,40.27,91.28
+P0073,Kite Wrap 073,home decor,54.53,77.53
+P0074,Halo Desk 074,office,62.93,92.96
+P0075,Flux Pack 075,outdoor,34.07,49.32
+P0076,Iris Stand 076,outdoor,98.91,239.31
+P0077,Pulse Set 077,office,65.78,132.73
+P0078,Flux Tote 078,office,35.65,84.12
+P0079,Core Pack 079,office,34.46,48.94
+P0080,Iris Desk 080,beauty,74.16,123.62
+P0081,Nova Pack 081,outdoor,4.35,11.28
+P0082,Dune Kit 082,home decor,8.06,18.15
+P0083,Jade Pod 083,fitness,8.89,14.60
+P0084,Flux Pack 084,travel,36.93,73.86
+P0085,Bright Blend 085,kitchen,97.03,251.64
+P0086,Glow Wrap 086,beauty,88.77,182.98
+P0087,Nova Vase 087,audio,31.74,61.46
+P0088,Glow Mat 088,travel,116.53,206.18
+P0089,Echo Stand 089,travel,26.24,64.51
+P0090,Aero Case 090,home decor,117.88,283.43
+P0091,Mesa Wrap 091,home decor,53.40,78.31
+P0092,Bright Tray 092,outdoor,73.06,163.01
+P0093,Iris Shade 093,travel,21.43,41.47
+P0094,Halo Brew 094,home decor,116.80,240.20
+P0095,Kite Stand 095,office,28.49,46.14
+P0096,Glow Mat 096,kitchen,58.53,117.25
+P0097,Echo Stand 097,kitchen,13.63,32.45
+P0098,Halo Case 098,outdoor,49.10,86.40
+P0099,Terra Stand 099,travel,79.93,180.58
+P0100,Jade Grip 100,kitchen,87.32,174.03
+P0101,Quill Tote 101,outdoor,99.51,224.69
+P0102,Sola Blend 102,fitness,109.46,252.13
+P0103,Lumen Desk 103,audio,12.96,18.80
+P0104,Aero Mat 104,beauty,100.79,208.66
+P0105,Core Wrap 105,office,33.86,65.97
+P0106,Pulse Pack 106,office,80.14,118.55
+P0107,Glow Mat 107,beauty,102.00,171.54
+P0108,Pulse Pod 108,kitchen,60.79,113.01
+P0109,Core Grip 109,travel,75.19,163.26
+P0110,Jade Grip 110,kitchen,32.71,74.97
+P0111,Dune Lamp 111,beauty,59.44,117.87
+P0112,Onyx Tray 112,beauty,37.03,74.79
+P0113,Rift Lamp 113,home decor,92.76,240.43
+P0114,Aero Pod 114,beauty,117.44,296.36
+P0115,Onyx Pack 115,audio,11.95,23.99
+P0116,Glow Case 116,office,27.55,69.83
+P0117,Lumen Grip 117,home decor,19.58,39.73
+P0118,Halo Vase 118,beauty,106.76,239.57
+P0119,Pulse Tray 119,audio,49.11,78.13
+P0120,Lumen Stand 120,travel,38.33,60.13

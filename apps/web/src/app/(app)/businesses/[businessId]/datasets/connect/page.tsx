@@ -43,6 +43,22 @@ export default async function ConnectSourcePage({ params }: PageProps<"/business
           </Link>
         }
       />
+      {process.env.DEMO_SOURCE_HOST ? (
+        <SectionCard title="Test database (synthetic data)" help="A read-only sample shop for trying the connector. Ask the project owner for the password.">
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[15px]">
+            <dt className="text-muted-foreground">Host</dt>
+            <dd className="break-all font-mono">{process.env.DEMO_SOURCE_HOST}</dd>
+            <dt className="text-muted-foreground">Port</dt>
+            <dd className="font-mono">5432</dd>
+            <dt className="text-muted-foreground">Database</dt>
+            <dd className="font-mono">{process.env.DEMO_SOURCE_DB ?? "postgres"}</dd>
+            <dt className="text-muted-foreground">Username</dt>
+            <dd className="break-all font-mono">{process.env.DEMO_SOURCE_USER}</dd>
+            <dt className="text-muted-foreground">Schema</dt>
+            <dd className="font-mono">{process.env.DEMO_SOURCE_SCHEMA ?? "demo_shop"}</dd>
+          </dl>
+        </SectionCard>
+      ) : null}
       {canConnect ? (
         <SectionCard
           title="New connection"

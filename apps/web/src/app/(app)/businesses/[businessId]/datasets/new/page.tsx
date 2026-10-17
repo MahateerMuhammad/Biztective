@@ -41,6 +41,17 @@ export default async function NewDatasetPage({
           <p className="text-[15px] text-muted-foreground">Your role can view data but not upload it.</p>
         )}
       </SectionCard>
+      <SectionCard title="Test files (synthetic data)" help="A six-month sample shop for trying the upload. Not real business data.">
+        <ul className="flex flex-wrap gap-4 text-[15px]">
+          {["orders", "products", "customers", "returns"].map((kind) => (
+            <li key={kind}>
+              <a href={`/samples/${kind}.csv`} download className="underline underline-offset-4 hover:text-foreground">
+                {kind}.csv
+              </a>
+            </li>
+          ))}
+        </ul>
+      </SectionCard>
     </div>
   );
 }
