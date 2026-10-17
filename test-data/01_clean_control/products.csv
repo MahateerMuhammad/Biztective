@@ -1,0 +1,49 @@
+product_id,product_name,category,unit_cost,list_price
+P0001,Bright Case 001,office,40.89,64.65
+P0002,Quill Lamp 002,kitchen,45.79,67.29
+P0003,Halo Case 003,audio,13.06,24.84
+P0004,Halo Brew 004,audio,9.92,20.62
+P0005,Rift Grip 005,home decor,8.80,14.65
+P0006,Sola Pod 006,outdoor,52.04,106.62
+P0007,Glow Shade 007,office,15.06,31.41
+P0008,Bright Lamp 008,beauty,67.09,98.98
+P0009,Kite Tray 009,beauty,82.61,158.04
+P0010,Flux Mat 010,office,45.31,76.94
+P0011,Kite Tray 011,home decor,70.21,142.54
+P0012,Quill Tote 012,outdoor,74.25,110.47
+P0013,Pulse Tote 013,kitchen,91.59,144.93
+P0014,Rift Set 014,travel,115.56,172.55
+P0015,Sola Tray 015,office,84.35,178.25
+P0016,Pulse Case 016,kitchen,101.28,256.60
+P0017,Sola Tray 017,home decor,88.55,156.87
+P0018,Lumen Blend 018,beauty,86.85,214.04
+P0019,Pulse Brew 019,fitness,44.59,95.12
+P0020,Halo Stand 020,audio,92.88,144.45
+P0021,Flux Tray 021,audio,110.27,220.08
+P0022,Nova Pack 022,audio,67.28,165.51
+P0023,Mesa Mat 023,outdoor,118.42,262.81
+P0024,Halo Blend 024,beauty,12.71,20.10
+P0025,Jade Blend 025,outdoor,100.24,162.27
+P0026,Sola Set 026,outdoor,52.02,95.88
+P0027,Terra Brew 027,beauty,83.79,169.14
+P0028,Rift Stand 028,audio,108.25,252.87
+P0029,Mesa Brew 029,fitness,49.68,75.72
+P0030,Flux Desk 030,travel,10.88,17.96
+P0031,Sola Grip 031,office,73.29,111.61
+P0032,Core Lamp 032,audio,114.03,243.62
+P0033,Lumen Shade 033,beauty,20.38,34.70
+P0034,Onyx Vase 034,beauty,17.37,42.01
+P0035,Kite Pack 035,beauty,39.49,62.12
+P0036,Aero Lamp 036,travel,99.98,159.34
+P0037,Aero Wrap 037,home decor,20.15,41.34
+P0038,Iris Wrap 038,travel,117.48,286.18
+P0039,Halo Wrap 039,travel,109.27,199.62
+P0040,Glow Mat 040,audio,77.46,165.44
+P0041,Quill Vase 041,travel,89.57,149.77
+P0042,Iris Vase 042,home decor,88.53,229.07
+P0043,Lumen Tray 043,travel,25.66,54.56
+P0044,Halo Desk 044,fitness,114.74,210.84
+P0045,Pulse Blend 045,beauty,58.00,104.71
+P0046,Core Desk 046,audio,109.38,198.28
+P0047,Pulse Kit 047,audio,94.53,217.43
+P0048,Mesa Tray 048,audio,95.33,171.50

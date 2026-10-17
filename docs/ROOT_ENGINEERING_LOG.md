@@ -1622,4 +1622,149 @@ The tested implemented path is upload → analyze/detect → investigate → cla
 
 - **Ephemeral OCI registry (`ttl.sh`):** Images pushed to `ttl.sh` expire after 24 hours; before a container restart or redeploy more than 24 hours later, re-run `.github/workflows/deploy-images.yml` (or push a bumped tag as documented in `docs/DEPLOYMENT_GUIDE.md`).
 - **Alternate Futures image tag caching:** Alternate Clouds caches image tags on provider nodes and rejects `:latest` / `:main`; every code update must bump the version tag (e.g., `1.0.2:24h` → `1.0.3:24h`).
-- **Commit hash and GitHub push status:** Pending final commit of `docs/DEPLOYMENT_GUIDE.md` and `docs/ROOT_ENGINEERING_LOG.md`.
+- **Commit hash and GitHub push status:** `8c870e0`, pushed to `main` (filled in by Phase 12 per R-4; `ls-remote` showed `main` at the later Phase 12 commit `b5a8fd1`, which contains it).
+
+## Phase 12 — Dual-source onboarding (CSV and read-only PostgreSQL) and competition readiness
+
+- **Scope:** user Phase 12 brief, recorded as AMD-24. Phase 11 (`8c870e0`) was the last logged phase; its pending commit field was filled in above (R-4). Work was split between a backend subagent (connector, migration, tests) and a frontend subagent (connect screen), then integrated, checked and extended in the main session. Phase 13 not started.
+
+### 1. Assessment before implementation
+- **Ingestion:** CSV only (four files: orders, products, customers, returns), with `inspect_file` limits (size, rows, encoding, `.csv`), header mapping, PII exclusion, quarantine of invalid rows, duplicate-checksum refusal and immutable dataset versions. No XLSX, no database connector existed.
+- **Deployment:** live on Alternate Futures (`root-api`, `root-web`), but both services were running the `1.0.0` images, not the `1.0.2` the guide named.
+- **Minimum change chosen:** a PostgreSQL source that produces the same four canonical CSVs and enters the existing `inspect_file` → `create_dataset` path, so validation, analytics, detection, investigation, HITL, approval and execution are shared by construction.
+
+### 2. Implementation
+- **Backend:**
+  - **Migration `0008`:** creates the tenant table `source_connections`, with RLS per AMD-3 and no password column. It also adds `datasets.source_type` (`upload` or `postgres`) and `datasets.source_connection_id`.
+  - **`app/sources/postgres.py`:**
+    - Network policy and identifier checks, then a read-only extraction.
+    - Rows are ordered by the canonical key and capped at `MAX_ROWS + 1`.
+    - The output is the canonical CSV.
+  - **`app/sources/router.py`:** endpoints `POST /sources/test`, `POST /sources`, `GET /sources` and `POST /sources/{id}/sync`. Create and sync are audited, and sync shares the upload rate limit. An unchanged source returns `unchanged` instead of a duplicate dataset.
+  - **Settings:**
+    - `SOURCE_DB_ALLOWED_HOSTS`.
+    - `SOURCE_DB_SSLMODE`: `verify-full` by default; `disable` only when `ENVIRONMENT=test`.
+    - `SOURCE_DB_SSLROOTCERT`: `system` by default. Supabase's public root CA ships at `app/sources/certs/supabase-prod-ca-2021.crt` (expires 2031-04-26), so `verify-full` works against Supabase. Without it, `system` fails with `source_tls_failed`, which was measured.
+- **Frontend:**
+  - The Data page and the Business Health empty state offer two choices: "Upload files (CSV)" and "Connect a PostgreSQL database".
+  - New screen `datasets/connect`:
+    - Test connection lists the tables found.
+    - Four selects map those tables to orders, products, customers and returns, then the connection is saved.
+    - The screen lists saved connections with their status in words, and each has a Sync now form.
+    - It says plainly that a valid connection does not mean data has been synced.
+  - Datasets carry a "From PostgreSQL" badge.
+  - It uses only the existing theme components.
+  - The password field is uncontrolled, cleared on submit and never stored.
+  - OpenAPI and TypeScript types were regenerated.
+- **Demo source:**
+  - Supabase schema `demo_shop` holds the synthetic shop from generator seed 7, scenario `discount_spike`: 120 products, 1,500 customers, 17,377 order lines and 811 returns. It has typed columns, primary and foreign keys, and a schema comment marking it SYNTHETIC.
+  - It is read through login role `shop_reader`: `SELECT` on `demo_shop` only, `default_transaction_read_only=on`.
+  - Credentials live only in the git-ignored `services/api/.env.demo-source`.
+
+### 3. Synchronization guarantees (as built)
+- Manual **Sync now**, full refresh, with the password re-entered on each sync. The checksum makes an unchanged source a no-op.
+- Each changed sync creates a new immutable dataset version, so earlier investigations keep their snapshot. A failed extraction creates no dataset, and `last_sync_status=failed` is recorded with the error code.
+- **Not delivered (stated, not claimed):**
+  - incremental/watermark sync;
+  - deletion tracking beyond full refresh;
+  - scheduled sync;
+  - XLSX;
+  - other engines;
+  - an overlap lock specific to the source (syncs share the business upload lock and rate limit).
+
+### 4. Security controls verified
+| Control | Evidence |
+|---|---|
+| Blocks loopback, private, link-local, metadata and IPv4-mapped addresses; allowlist override | `tests/sources/test_policy.py`; live against the real resolver: `169.254.169.254` and `localhost` → `source_blocked_address` |
+| Pins the resolved IP (`hostaddr`) against DNS rebinding | `postgres.connect` |
+| TLS `verify-full` against the Supabase CA | Real Supabase connection succeeded with the bundled CA; `system` CA → `source_tls_failed` |
+| Wrong password → fixed message, no password echoed | Integration test; live Supabase → `source_auth_failed` |
+| Read-only: session default, `BEGIN READ ONLY` and role grants | Integration test (write refused even with ALL granted); Supabase `shop_reader` insert → `ReadOnlySqlTransaction`, `public.businesses` → `InsufficientPrivilege` |
+| Identifier allowlist; injection strings rejected | Unit tests; live `orders; drop table x` → `invalid_identifier` |
+| Cross-business connection → 404; RLS on `source_connections` | Integration test; T-17/T-18 lists updated |
+| No password stored or returned | Schema has no column; response models checked by tests |
+
+### 5. Dual-source equivalence
+- **Integration test (local PostgreSQL):** `test_sync_matches_csv_upload` syncs the seed-7 data from a PostgreSQL schema and compares it with uploading the same CSVs. **Weekly metrics are identical.** The dataset reaches `ready` with `source_type=postgres`, and a second sync returns `unchanged`.
+- **Supabase demo source (real network, `verify-full`):** extraction returned exactly 120, 1,500, 17,377 and 811 rows, matching the CSVs.
+  - Products, customers and returns are identical as text.
+  - 14,683 order rows differ only in textual number formatting from typed `numeric(12,2)` columns (for example `0.00` vs `0`). The ingestion parser treats these as equal values.
+  - Metric equality on this exact Supabase copy was **not run** end to end (see §8).
+- Incident equivalence follows from identical canonical inputs to one deterministic detector. A separate incident-set comparison test was **not written**.
+
+### 6. Tests executed (this session)
+| Gate | Command | Result |
+|---|---|---|
+| Backend lint/format/types | `ruff check .`, `ruff format --check .`, `mypy` (strict) | **Passed** (171 files formatted, 0 mypy errors in 166 files) |
+| Connector tests | `pytest tests/sources` | **22 passed** (after the `sslrootcert` change) |
+| Security + migrations + sources | `pytest tests/security tests/integration/test_health_and_migrations.py tests/sources` | **139 passed** (backend subagent, before the `sslrootcert` change) |
+| Full backend suite | `pytest -m 'not perf'` | **765 passed, 43 failed, 2 skipped** (40 min), run with a developer `services/api/.env` present that configures the Sheets bridge (pydantic reads it). Only the last 5 failure names were retained (all in `tests/actions/test_integrations.py` and `test_hardening_boundaries.py`). Rerun of those two files without that `.env`: **13 passed**. The other 38 failures were **not individually identified**; a clean full rerun is still required |
+| Frontend | `npm run typecheck`, `npm run lint`, `npx vitest run`, `npm run build` | **Passed**; Vitest **67 passed** (9 files, incl. 3 new) (frontend subagent) |
+| Images | GitHub Actions `deploy-images.yml` | `1.0.3` api and web manifests confirmed published on ttl.sh; the workflow's own run log was **not read** (CLI access blocked in this session) |
+| Playwright (local or remote), live demo journey, perf suite | — | **Not run** (time limit; live TLS fix not deployed) |
+
+### 7. Deployment (Alternate Futures)
+- Commit `b5a8fd1` (connector, connect screen, AMD-24) was built as `ttl.sh/root2-mahateer-{api,web}-1.0.3:24h` and deployed at the user's request.
+- `acc services info` showed both services `running` on `1.0.3`, and `GET https://root-web-app.alternatefutures.ai/api/v1/readyz` → `{"status":"ready"}`. Readiness checks the migration head, so `0008` is applied on Supabase.
+- `SOURCE_DB_SSLMODE=require` was **not** set: the user rejected it, and it is unnecessary with the bundled CA.
+- The `SOURCE_DB_SSLROOTCERT` change made after `b5a8fd1` is committed but **not deployed** (the user asked not to deploy).
+  - The live backend therefore uses `verify-full` with the system CAs, and connecting it to the Supabase demo source is expected to fail with `source_tls_failed`. This was measured locally with the same setting; it was not run live.
+  - To deploy: build `1.0.4`, deploy both images, then `acc services env set cmvbwfap014pibs1u7pxz2e5k SOURCE_DB_SSLROOTCERT /app/app/sources/certs/supabase-prod-ca-2021.crt`.
+
+### 8. Performance (measured)
+| Measurement | Result |
+|---|---|
+| Supabase demo extraction from the developer laptop (17,377 + 1,500 + 120 + 811 rows, `verify-full`) | **231.7 s** total. The catalog queries took 0.26 s each, and the connection 1.8 s. The time is the result transfer over this laptop's link to the Sydney pooler; one repeat fetch was dropped mid-transfer (`SSL connection has been closed unexpectedly` → `source_unreachable`). |
+| The same from the Alternate Futures backend | **Not measured** (not deployed). It must be measured before relying on live sync in the demo, which has a 20 s per-statement timeout. If the deployed network is as slow, the orders query will time out. |
+| Earlier phases' ingestion/analytics/investigation budgets | Unchanged code paths; Phase 10 figures still apply; not re-run |
+
+### 9. Rubric evidence matrix (conservative and optimistic estimates; not guaranteed)
+| Criterion (max) | Implemented | Live evidence | Tests | Weakness | Cons. | Opt. |
+|---|---|---|---|---|---|---|
+| Technical reliability (25) | Durable LangGraph, fenced job leases, idempotent executor, read-only connector | Deployed `1.0.3` ready; Phase 9–11 live journeys | 765 backend passed; 43 failing in this run (pending diagnosis); 22 connector; 67 frontend | Live DB sync unproven; full suite not green in this run | 15 | 21 |
+| Usefulness & impact (20) | Two onboarding paths into one engine; incidents → plan → verified Sheets task | CSV path live since Phase 11 | Equivalence test (metrics identical) | DB path not shown live yet; full refresh only | 12 | 17 |
+| HITL alignment (15) | Knowledge (clarifications change interpretation), decision (edit/compare/reject), authority (owner approval, stale-hash rejection) | Phase 9/11 journeys | HITL suites from Phases 6–8, 10 | No new HITL work this phase | 12 | 14 |
+| Creativity (15) | Proof Chain, Investigation Replay, verified external action | Phase 9 UI | — | Concepts are not unique in the market | 9 | 12 |
+| Automation depth (15) | Autonomous detection → hypotheses → evidence → plan; direct DB pull | — | Investigation suites | Manual sync only; no scheduling | 9 | 12 |
+| UX & presentation (10) | Themed, accessible screens; two clear onboarding choices | — | Phase 9 axe/keyboard/mobile | New connect screen not axe-tested in Playwright | 7 | 9 |
+| **Total (100)** | | | | | **64** | **85** |
+
+### 10. Six-minute demo script (deployed app)
+| Time | Action |
+|---|---|
+| 0:00–0:35 | Pitch (brief wording); sign in as the demo owner |
+| 0:35–1:10 | Data → show "Upload files (CSV)" (already-ingested dataset as proof); open "Connect a PostgreSQL database", test the pre-saved `demo_shop` connection and press Sync now (use the pre-synced version if sync is slow) |
+| 1:10–1:55 | Business health: margin decline, prioritised incidents, drill-down to evidence |
+| 1:55–2:55 | Start investigation; ROOT asks whether the discounts were planned clearance; answer "yes"; show the revised interpretation |
+| 2:55–3:40 | Investigation replay: version 1 vs 2, unchanged observations |
+| 3:40–4:30 | Plan a recovery; compare strategies; edit budget/cost; recalculate |
+| 4:30–5:20 | Approve; Execute in Google Sheets; "Done and verified"; open the sheet |
+| 5:20–6:00 | Audit history; safeguards (read-only connector, owner approval, verified write); close |
+
+- **Preparation:**
+  1. Deploy `1.0.4` with the CA setting.
+  2. Create the `demo_shop` connection once.
+  3. Sync it ahead of time and keep one CSV dataset.
+  4. Rehearse twice.
+- **Reset:**
+  - Rerun the demo loader, which recreates `demo_shop` and resets the `shop_reader` password.
+  - Seed a fresh owner with `app.cli seed-demo` under a new email.
+- **Fallback:** if live sync fails or is slow, use the pre-synced dataset (a real earlier sync) and say so; if Sheets is slow, show the verified action from the rehearsal.
+
+### 11. Known limitations
+- The deployed backend cannot yet verify Supabase's certificate (fixed in code, not deployed).
+- Live sync time from Alternate Futures has not been measured.
+- Full refresh only; no incremental, scheduled or deletion-aware sync; no XLSX.
+- Order text formatting differs from typed source columns (values are equal).
+- No separate incident-set equivalence test.
+- Playwright and the live end-to-end journey were not run in Phase 12.
+- The full backend suite had 43 failures in this run (see §6 and §12).
+
+### 12. Commits, push and verdict
+- `b5a8fd1` (Phase 12 connector and UI) was pushed to `main`; `git ls-remote` matched `HEAD`.
+- A follow-up commit (below this entry's push) contains: the Supabase CA bundle and `SOURCE_DB_SSLROOTCERT`, this log, and the Phase 11 hash fill-in. It is pushed, **not deployed** (user instruction).
+- **Final verdict: NOT READY.**
+  - **Deployment:** the deployed backend cannot yet verify the Supabase demo source's certificate.
+  - **Live check:** the live dual-source demo journey and the Playwright suites were not run.
+  - **Backend suite:** it has not been rerun clean.
+  - **Ready to go:** the CSV path, investigation, HITL and verified Sheets execution are deployed (unchanged since Phases 9–11).

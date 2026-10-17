@@ -1,0 +1,82 @@
+[
+  {
+    "scenario": "01_clean_control",
+    "postgres_schema": "test_clean_control",
+    "orders": 23412,
+    "products": 48,
+    "customers": 600,
+    "returns": 1072,
+    "purpose": "Stable trading baseline; financial metrics and customer segmentation",
+    "expected_behavior": "Valid input; inspect actual output. Zero statistical anomalies are not guaranteed."
+  },
+  {
+    "scenario": "02_return_spike",
+    "postgres_schema": "test_return_spike",
+    "orders": 23412,
+    "products": 48,
+    "customers": 600,
+    "returns": 1216,
+    "purpose": "Product quality incident, refunds, competing explanations, clarification and recovery",
+    "expected_behavior": "Valid input; planted defective-product return increase in the final four weeks."
+  },
+  {
+    "scenario": "03_discount_spike",
+    "postgres_schema": "test_discount_spike",
+    "orders": 23412,
+    "products": 48,
+    "customers": 600,
+    "returns": 1072,
+    "purpose": "Discount leakage, margin changes, evidence and intervention constraints",
+    "expected_behavior": "Valid input; planted channel discount increase in the final four weeks."
+  },
+  {
+    "scenario": "04_combined_incidents",
+    "postgres_schema": "test_combined_incidents",
+    "orders": 23412,
+    "products": 48,
+    "customers": 600,
+    "returns": 1216,
+    "purpose": "Prioritization of simultaneous quality and discount incidents",
+    "expected_behavior": "Valid input; both independent mechanisms are planted."
+  },
+  {
+    "scenario": "05_quality_and_pii",
+    "postgres_schema": "test_quality_and_pii",
+    "orders": 23412,
+    "products": 48,
+    "customers": 600,
+    "returns": 1216,
+    "purpose": "Quarantine, missing references, ambiguous dates, negative quantities and PII removal",
+    "expected_behavior": "About 2% intentionally corrupted order rows; actual issue totals come from the validator."
+  },
+  {
+    "scenario": "06_untrusted_text",
+    "postgres_schema": "test_untrusted_text",
+    "orders": 23412,
+    "products": 48,
+    "customers": 600,
+    "returns": 1216,
+    "purpose": "Prompt injection, HTML escaping, formula-safe exports and quoted multiline CSV",
+    "expected_behavior": "Text must stay inert: no execution, altered facts, secrets or approval bypass."
+  },
+  {
+    "scenario": "07_short_history",
+    "postgres_schema": "test_short_history",
+    "orders": 3535,
+    "products": 48,
+    "customers": 600,
+    "returns": 121,
+    "purpose": "Insufficient-history and unresolved-evidence flows",
+    "expected_behavior": "Four weeks only; do not produce a confident sixteen-week incident comparison."
+  },
+  {
+    "scenario": "08_rejection_threshold",
+    "postgres_schema": "test_rejection_threshold",
+    "orders": 23412,
+    "products": 48,
+    "customers": 600,
+    "returns": 1072,
+    "purpose": "Dataset rejection when invalid order rows exceed the five-percent contract",
+    "expected_behavior": "About 12% intentionally corrupted order rows; expect rejection after validation."
+  }
+]

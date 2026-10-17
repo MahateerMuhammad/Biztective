@@ -116,6 +116,7 @@ def _target(request: Request, host: str, port: int, db: str, user: str, pw: Secr
         username=user,
         password=pw.get_secret_value(),
         sslmode=settings.source_db_sslmode,
+        sslrootcert=settings.source_db_sslrootcert,
         allowed_hosts=allowed_hosts(settings.source_db_allowed_hosts),
     )
 

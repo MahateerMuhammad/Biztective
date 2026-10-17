@@ -1,0 +1,9 @@
+scenario,postgres_schema,orders,products,customers,returns,purpose,expected_behavior
+01_clean_control,test_clean_control,23412,48,600,1072,Stable trading baseline; financial metrics and customer segmentation,Valid input; inspect actual output. Zero statistical anomalies are not guaranteed.
+02_return_spike,test_return_spike,23412,48,600,1216,"Product quality incident, refunds, competing explanations, clarification and recovery",Valid input; planted defective-product return increase in the final four weeks.
+03_discount_spike,test_discount_spike,23412,48,600,1072,"Discount leakage, margin changes, evidence and intervention constraints",Valid input; planted channel discount increase in the final four weeks.
+04_combined_incidents,test_combined_incidents,23412,48,600,1216,Prioritization of simultaneous quality and discount incidents,Valid input; both independent mechanisms are planted.
+05_quality_and_pii,test_quality_and_pii,23412,48,600,1216,"Quarantine, missing references, ambiguous dates, negative quantities and PII removal",About 2% intentionally corrupted order rows; actual issue totals come from the validator.
+06_untrusted_text,test_untrusted_text,23412,48,600,1216,"Prompt injection, HTML escaping, formula-safe exports and quoted multiline CSV","Text must stay inert: no execution, altered facts, secrets or approval bypass."
+07_short_history,test_short_history,3535,48,600,121,Insufficient-history and unresolved-evidence flows,Four weeks only; do not produce a confident sixteen-week incident comparison.
+08_rejection_threshold,test_rejection_threshold,23412,48,600,1072,Dataset rejection when invalid order rows exceed the five-percent contract,About 12% intentionally corrupted order rows; expect rejection after validation.

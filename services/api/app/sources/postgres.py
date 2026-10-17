@@ -51,6 +51,7 @@ class Target:
     username: str
     password: str
     sslmode: str
+    sslrootcert: str
     allowed_hosts: frozenset[str]
 
 
@@ -122,6 +123,9 @@ def connect(target: Target) -> psycopg.Connection[tuple[object, ...]]:
             user=target.username,
             password=target.password,
             sslmode=target.sslmode,
+            # libpq only accepts sslrootcert=system with verify-full; the CA matters only there.
+            # (psycopg omits None parameters.)
+            sslrootcert=target.sslrootcert if target.sslmode == "verify-full" else None,
             connect_timeout=CONNECT_TIMEOUT_SECONDS,
             options=SESSION_OPTIONS,
             application_name="root-source",

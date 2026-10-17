@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     source_db_allowed_hosts: str = Field(default="", max_length=2000)
     # "disable" is accepted only in the test environment (validated below).
     source_db_sslmode: Literal["verify-full", "require", "disable"] = "verify-full"
+    # CA bundle for verify-full: "system" (public CAs) or a file path, e.g. the bundled Supabase CA
+    # app/sources/certs/supabase-prod-ca-2021.crt (AMD-24).
+    source_db_sslrootcert: str = Field(default="system", min_length=1, max_length=500)
 
     @field_validator("database_url")
     @classmethod

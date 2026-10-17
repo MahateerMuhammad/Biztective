@@ -245,6 +245,7 @@ def test_session_is_read_only(source_db: dict[str, Any]) -> None:
         username=READER,
         password=READER_PASSWORD,
         sslmode="disable",
+        sslrootcert="system",
         allowed_hosts=frozenset({source_db["host"]}),
     )
     with connect(target) as conn, pytest.raises(psycopg.errors.ReadOnlySqlTransaction):

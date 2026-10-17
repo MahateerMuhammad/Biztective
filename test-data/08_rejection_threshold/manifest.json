@@ -1,0 +1,23 @@
+{
+  "scenario": "08_rejection_threshold",
+  "schema": "test_rejection_threshold",
+  "purpose": "Dataset rejection when invalid order rows exceed the five-percent contract",
+  "expected_behavior": "About 12% intentionally corrupted order rows; expect rejection after validation.",
+  "seed": 7,
+  "weeks": 26,
+  "date_start": "2026-04-06",
+  "rows": {
+    "orders": 23412,
+    "products": 48,
+    "customers": 600,
+    "returns": 1072
+  },
+  "planted_generator_metadata": {},
+  "sha256": {
+    "orders.csv": "d1d035a70d152885a81cab3773cf67fa5040010dfd35fb638d79158729d18639",
+    "products.csv": "25059a6f26942c9ce341f3efabaa22c432c911fc2159f9f99b9ae50ecc9ce085",
+    "customers.csv": "18b3d941f8d9584a06d079d197a277ced4fcb8117e5e16bc86dd87cfba72c3ce",
+    "returns.csv": "283a581996fd9d71ae37238445366898898494e39d08f99b194642d3d71f6f75"
+  },
+  "synthetic_data_only": true
+}
