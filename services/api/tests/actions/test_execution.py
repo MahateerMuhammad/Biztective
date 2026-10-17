@@ -785,3 +785,194 @@ def test_cell_length_is_capped() -> None:
     assert len(sanitize("x" * 9000)) == MAX_CELL
     assert len(sanitize("=" + "x" * 9000)) == MAX_CELL
     assert sanitize("=1").startswith("'")
+
+
+@pytest.mark.parametrize("after_op", ["metadata", "read", "append"])
+async def test_revocation_between_provider_calls_stops_every_later_mutation(
+    app: FastAPI,
+    client: httpx.AsyncClient,
+    owner: Tenant,
+    google: FakeGoogle,
+    owner_engine: Engine,
+    after_op: str,
+) -> None:
+    plan = await approved_plan(app, client, owner, queue=True)
+    action_id = await started(app, client, owner, google, plan)
+    triggered = False
+
+    async def revoke_after_call(request: httpx.Request) -> httpx.Response:
+        nonlocal triggered
+        response = await google.handle(request)
+        if google.log[-1] == after_op and not triggered:
+            triggered = True
+            with owner_engine.begin() as conn:
+                conn.execute(text("UPDATE integrations SET status = 'revoked'"))
+        return response
+
+    app.state.actions.transport = httpx.MockTransport(revoke_after_call)
+    await run_jobs(app)
+    done = await action(client, owner, action_id)
+    assert triggered
+    assert done["error_code"] == "integration_not_verified"
+    if after_op == "append":
+        assert done["status"] == "manual_review"
+        assert len(rows_of(google, REVIEW)) == 1
+        assert rows_of(google, QUEUE) == []
+        assert google.ops("append") == 1
+    else:
+        assert done["status"] == "failed"
+        assert google.ops("append") == 0
+        assert google.ops("put_rows") == 0
+        if after_op == "metadata":
+            assert google.ops("add_tabs") == 0
+
+
+async def test_crashed_write_followed_by_revocation_preserves_unknown_outcome(
+    app: FastAPI,
+    client: httpx.AsyncClient,
+    owner: Tenant,
+    google: FakeGoogle,
+    plan: dict[str, Any],
+    owner_engine: Engine,
+) -> None:
+    action_id = await started(app, client, owner, google, plan)
+    google.fail("append", "crash_after")
+    with pytest.raises(ProcessDied):
+        await run_jobs(app)
+    crashed = await action(client, owner, action_id)
+    assert crashed["attempts"][0]["writes_sent"] is True
+    with owner_engine.begin() as conn:
+        conn.execute(text("UPDATE integrations SET status = 'revoked'"))
+    make_due(owner_engine)
+    await run_jobs(app)
+    done = await action(client, owner, action_id)
+    assert (done["status"], done["error_code"]) == ("manual_review", "integration_not_verified")
+    assert len(rows_of(google, REVIEW)) == 1
+    assert google.ops("append") == 1
+
+
+async def test_restart_after_succeeded_commit_finishes_read_back(
+    app: FastAPI,
+    client: httpx.AsyncClient,
+    owner: Tenant,
+    google: FakeGoogle,
+    plan: dict[str, Any],
+    owner_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    action_id = await started(app, client, owner, google, plan)
+    original = ActionRuntime._record_success
+
+    # Any here forwards the private runtime signature unchanged to inject a process kill.
+    async def crash_after_commit(self: ActionRuntime, *args: Any, **kwargs: Any) -> None:
+        await original(self, *args, **kwargs)
+        raise ProcessDied
+
+    monkeypatch.setattr(ActionRuntime, "_record_success", crash_after_commit)
+    with pytest.raises(ProcessDied):
+        await run_jobs(app)
+    assert (await action(client, owner, action_id))["status"] == "succeeded"
+    monkeypatch.setattr(ActionRuntime, "_record_success", original)
+    make_due(owner_engine)
+    await run_jobs(app)
+    done = await action(client, owner, action_id)
+    assert done["status"] == "verified"
+    assert done["verification"]["ok"] is True
+    assert google.ops("append") == 1
+    assert attempts(done) == [("interrupted", "worker_lost"), ("completed", None)]
+
+
+async def test_crash_on_final_job_lease_closes_attempt_with_unknown_outcome(
+    app: FastAPI,
+    client: httpx.AsyncClient,
+    owner: Tenant,
+    google: FakeGoogle,
+    plan: dict[str, Any],
+    owner_engine: Engine,
+) -> None:
+    action_id = await started(app, client, owner, google, plan)
+    with owner_engine.begin() as conn:
+        conn.execute(text("UPDATE jobs SET max_attempts = 1 WHERE type = 'execute_action'"))
+    google.fail("append", "crash_after")
+    with pytest.raises(ProcessDied):
+        await run_jobs(app)
+    make_due(owner_engine)
+    await run_jobs(app)
+    done = await action(client, owner, action_id)
+    assert (done["status"], done["error_code"]) == ("manual_review", "lease_exhausted")
+    assert attempts(done) == [("interrupted", "lease_exhausted")]
+    assert done["attempts"][0]["writes_sent"] is True
+    assert google.ops("append") == 1
+    assert len(rows_of(google, REVIEW)) == 1
+    assert (await retry(client, owner, action_id)).status_code == 202
+    await run_jobs(app)
+    assert (await action(client, owner, action_id))["status"] == "verified"
+    assert google.ops("append") == 1
+
+
+@pytest.mark.parametrize("stale_outcome", ["resume", "permanent_failure", "retryable_failure"])
+async def test_replaced_attempt_cannot_write_or_close_its_replacement(
+    app: FastAPI,
+    client: httpx.AsyncClient,
+    owner: Tenant,
+    google: FakeGoogle,
+    plan: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+    stale_outcome: str,
+) -> None:
+    from app.actions.sheets import SheetsApi, SheetsError
+
+    action_id = await started(app, client, owner, google, plan)
+    runtime: ActionRuntime = app.state.actions
+    job = LeasedJob(
+        id=uuid.uuid7(),
+        type="execute_action",
+        business_id=owner.business_id,
+        payload={"action_id": action_id},
+        attempts=1,
+        max_attempts=3,
+    )
+    paused = asyncio.Event()
+    release = asyncio.Event()
+    original = ActionRuntime._read
+    first = True
+
+    async def pause_first_read(
+        self: ActionRuntime, client_: SheetsApi, sid: str, tabs: list[dict[str, Any]]
+    ) -> dict[str, list[list[str]]]:
+        nonlocal first
+        found = await original(self, client_, sid, tabs)
+        if first:
+            first = False
+            paused.set()
+            await release.wait()
+            if stale_outcome != "resume":
+                raise SheetsError("stale_failure", retryable=stale_outcome == "retryable_failure")
+        return found
+
+    monkeypatch.setattr(ActionRuntime, "_read", pause_first_read)
+    old = asyncio.create_task(runtime.run(app.state.sessionmaker, job))
+    await paused.wait()
+    # The same job was re-leased to a replacement. It owns the next action attempt.
+    replacement = await runtime._begin(
+        app.state.sessionmaker, owner.business_id, uuid.UUID(action_id), job.id
+    )
+    assert replacement is not None
+    assert replacement.number == 2
+    release.set()
+    if stale_outcome == "retryable_failure":
+        with pytest.raises(RetryableJobError):
+            await old
+    else:
+        await old
+    waiting = await action(client, owner, action_id)
+    assert waiting["status"] == "pending"
+    assert waiting["attempt_count"] == 2
+    assert attempts(waiting) == [("interrupted", "worker_lost"), ("started", None)]
+    assert google.ops("append") == 0
+    await runtime._execute(
+        app.state.sessionmaker, owner.business_id, uuid.UUID(action_id), replacement
+    )
+    done = await action(client, owner, action_id)
+    assert done["status"] == "verified"
+    assert google.ops("append") == 1

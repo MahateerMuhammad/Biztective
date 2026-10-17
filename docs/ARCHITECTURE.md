@@ -90,6 +90,8 @@ Every tenant-scoped table has `business_id NOT NULL` and an RLS policy `business
 
 ### 4.3 Job queue and worker (ADR-003)
 
+> **Amended by AMD-21 (Phase 10):** lease heartbeats and terminal updates must match the acquired attempt; a stale worker cannot extend or finish a replacement worker's lease. Recovery and reconciliation remain bounded and conservative for interrupted external calls.
+
 - Table `jobs` (DATA_CONTRACTS §6). Job types: `ingest_dataset`, `run_investigation`, `resume_investigation`, `execute_action`, `retention_sweep`.
 - Enqueue happens in the same transaction as the triggering domain change.
 - The worker runs as an asyncio task started in FastAPI's lifespan, with concurrency `WORKER_CONCURRENCY` (default 2). It polls every 1 s with:

@@ -6,7 +6,7 @@ import time
 import httpx
 import pytest
 from fastapi import FastAPI
-from sqlalchemy import Engine
+from sqlalchemy import Engine, text
 
 from tests.helpers import create_tenant, login
 from tests.investigation.support import (
@@ -49,6 +49,24 @@ async def test_investigation_benchmark(
     assert cached["status"] == "awaiting_human"
     assert cached["id"] != first["id"]
     assert signature(first) == signature(cached)  # version 1 of both: identical analysis
+    with owner_engine.connect() as connection:
+        usage = connection.execute(
+            text(
+                "SELECT count(*) AS calls, coalesce(sum(tokens_in), 0) AS input_tokens, "
+                "coalesce(sum(tokens_out), 0) AS output_tokens, "
+                "coalesce(max(octet_length(input::text)), 0) AS largest_input_bytes "
+                "FROM llm_calls WHERE investigation_id = :id"
+            ),
+            {"id": cached["id"]},
+        ).one()
+        tool_results = connection.scalar(
+            text(
+                "SELECT coalesce(sum(jsonb_array_length(payload->'items')), 0) "
+                "FROM investigation_events WHERE investigation_id = :id "
+                "AND type = 'evidence.collected'"
+            ),
+            {"id": cached["id"]},
+        )
     result = {
         "first_question_seconds": round(first_question_seconds, 3),
         "answer_to_next_question_seconds": round(answer_seconds, 3),
@@ -58,6 +76,11 @@ async def test_investigation_benchmark(
         "evidence_items": sum(len(i["evidence"]) for i in first["incidents"]),
         "events_at_first_question": first["last_seq"],
         "mock_llm_calls": len(provider.requests),
+        "persisted_mock_llm_calls": usage.calls,
+        "mock_input_tokens": usage.input_tokens,
+        "mock_output_tokens": usage.output_tokens,
+        "largest_mock_input_bytes": usage.largest_input_bytes,
+        "tool_results_collected": int(tool_results or 0),
     }
     print("\nINVESTIGATION_BENCHMARK " + json.dumps(result))  # noqa: T201
     assert first_question_seconds <= 60  # NFR-08: start to first clarification.

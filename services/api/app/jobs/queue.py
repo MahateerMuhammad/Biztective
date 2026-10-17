@@ -101,44 +101,52 @@ async def lease_next(session: AsyncSession) -> LeasedJob | None:
     )
 
 
-async def extend_lease(session: AsyncSession, job_id: uuid.UUID) -> None:
+async def extend_lease(session: AsyncSession, job: LeasedJob) -> None:
     now = utcnow()
     await session.execute(
         text("""
             UPDATE jobs SET lease_expires_at = :lease, updated_at = :now
-            WHERE id = :id AND status = 'running'
+            WHERE id = :id AND status = 'running' AND attempts = :attempts
         """),
-        {"id": job_id, "lease": now + LEASE, "now": now},
+        {"id": job.id, "attempts": job.attempts, "lease": now + LEASE, "now": now},
     )
     await session.commit()
 
 
-async def finish(session: AsyncSession, job_id: uuid.UUID) -> None:
+async def finish(session: AsyncSession, job: LeasedJob) -> None:
     now = utcnow()
     await session.execute(
         text("""
             UPDATE jobs SET status = 'succeeded', lease_expires_at = NULL, finished_at = :now,
                 updated_at = :now
-            WHERE id = :id
+            WHERE id = :id AND status = 'running' AND attempts = :attempts
         """),
-        {"id": job_id, "now": now},
+        {"id": job.id, "attempts": job.attempts, "now": now},
     )
     await session.commit()
 
 
-async def fail(session: AsyncSession, job: LeasedJob, *, error_code: str, retryable: bool) -> bool:
-    """Record a failure. Returns True if the job will be retried."""
+async def fail(
+    session: AsyncSession, job: LeasedJob, *, error_code: str, retryable: bool
+) -> bool | None:
+    """Record a failure: True for retry, False for terminal, None for a stale lease.
+
+    The attempt number fences every mutation against a worker whose lease was re-leased.
+    A stale failure must not invoke the terminal-failure handler for the current worker.
+    """
     now = utcnow()
     retry = retryable and job.attempts < job.max_attempts
     backoff = timedelta(seconds=(2**job.attempts) * 5 * random.uniform(0.8, 1.2))  # noqa: S311
-    await session.execute(
+    changed = await session.scalar(
         text("""
             UPDATE jobs SET status = :status, lease_expires_at = NULL, last_error_code = :code,
                 run_after = :run_after, finished_at = :finished, updated_at = :now
-            WHERE id = :id
+            WHERE id = :id AND status = 'running' AND attempts = :attempts
+            RETURNING id
         """),
         {
             "id": job.id,
+            "attempts": job.attempts,
             "status": "queued" if retry else "failed",
             "code": error_code,
             "run_after": now + backoff if retry else now,
@@ -147,4 +155,4 @@ async def fail(session: AsyncSession, job: LeasedJob, *, error_code: str, retrya
         },
     )
     await session.commit()
-    return retry
+    return retry if changed is not None else None

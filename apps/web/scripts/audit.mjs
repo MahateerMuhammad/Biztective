@@ -8,29 +8,52 @@ const EXCEPTIONS = {
   "GHSA-vfj7-8cjw-p6xm": { reason: "AMD-7", expires: "2027-01-31" },
 };
 
-let output;
-try {
-  output = execFileSync("npm", ["audit", "--json"], { encoding: "utf8" });
-} catch (error) {
-  output = error.stdout; // npm audit exits non-zero when it finds anything
-}
-const report = JSON.parse(output);
-const today = new Date().toISOString().slice(0, 10);
-const failures = new Set();
+function run() {
+  let output;
+  try {
+    output = execFileSync("npm", ["audit", "--json"], { encoding: "utf8" });
+  } catch (error) {
+    // npm exits nonzero for findings, but also for registry and command failures.
+    output = error.stdout;
+  }
+  const report = JSON.parse(output);
+  if (!report || typeof report !== "object" || Object.hasOwn(report, "error") ||
+      !report.vulnerabilities || typeof report.vulnerabilities !== "object" ||
+      Array.isArray(report.vulnerabilities)) {
+    throw new Error("npm audit did not return a complete vulnerability report");
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  const failures = new Set();
 
-for (const vulnerability of Object.values(report.vulnerabilities ?? {})) {
-  for (const via of vulnerability.via) {
-    if (typeof via !== "object" || !["high", "critical"].includes(via.severity)) continue;
-    const id = via.url?.split("/").pop() ?? "unknown";
-    const exception = EXCEPTIONS[id];
-    if (!exception || exception.expires < today) {
-      failures.add(`${via.severity}: ${via.name} ${id} ${via.title}`);
+  for (const vulnerability of Object.values(report.vulnerabilities)) {
+    if (!vulnerability || typeof vulnerability !== "object" || !Array.isArray(vulnerability.via)) {
+      throw new Error("npm audit returned a malformed vulnerability entry");
+    }
+    for (const via of vulnerability.via) {
+      if (typeof via === "string") continue; // npm's reference to another affected package
+      if (!via || typeof via !== "object" || typeof via.severity !== "string" ||
+          typeof via.url !== "string" ||
+          !["info", "low", "moderate", "high", "critical"].includes(via.severity)) {
+        throw new Error("npm audit returned a malformed advisory");
+      }
+      if (!["high", "critical"].includes(via.severity)) continue;
+      const id = via.url.split("/").pop() ?? "unknown";
+      const exception = EXCEPTIONS[id];
+      if (!exception || exception.expires < today) {
+        failures.add(`${via.severity}: ${via.name} ${id} ${via.title}`);
+      }
     }
   }
+
+  if (failures.size > 0) {
+    throw new Error("Unexcepted high/critical advisories:\n" + [...failures].join("\n"));
+  }
+  console.log("npm audit gate passed (only documented exceptions present).");
 }
 
-if (failures.size > 0) {
-  console.error("Unexcepted high/critical advisories:\n" + [...failures].join("\n"));
-  process.exit(1);
+try {
+  run();
+} catch (error) {
+  console.error(error instanceof Error ? error.message : "npm audit gate failed");
+  process.exitCode = 1;
 }
-console.log("npm audit gate passed (only documented exceptions present).");

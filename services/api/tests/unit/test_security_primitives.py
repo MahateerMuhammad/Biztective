@@ -105,3 +105,78 @@ def test_cursor_round_trip_and_rejection() -> None:
         decode_uuid_cursor(encode_cursor("not-a-uuid"))
     with pytest.raises(ApiError):
         decode_uuid_cursor("\udcff")
+
+
+def test_json_formatter_redacts_nested_credentials_and_exception_values() -> None:
+    try:
+        raise RuntimeError("provider returned sentinel-secret and customer data")
+    except RuntimeError:
+        import sys
+
+        record = logging.makeLogRecord(
+            {
+                "msg": "provider_failure",
+                "levelname": "ERROR",
+                "name": "test",
+                "details": [
+                    {
+                        "password": "sentinel-password",
+                        "verification_code": "sentinel-code",
+                        "nested": {"authorization": "sentinel-token"},
+                        "status": 500,
+                    }
+                ],
+                "exc_info": sys.exc_info(),
+            }
+        )
+    output = JsonFormatter().format(record)
+    assert "sentinel" not in output
+    payload = json.loads(output)
+    assert payload["exc_type"] == "RuntimeError"
+    assert (
+        payload["exc"][0]["function"]
+        == "test_json_formatter_redacts_nested_credentials_and_exception_values"
+    )
+    assert payload["details"][0]["status"] == 500
+    assert payload["details"][0]["nested"]["authorization"] == REDACTED
+
+
+def test_session_bucket_enforces_quota_refills_and_bounds_memory() -> None:
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from app.auth.rate_limit import CAPACITY, MAX_BUCKETS, SessionRateLimitMiddleware
+
+    async def unused(scope: object, receive: object, send: object) -> None:
+        pass
+
+    limiter = SessionRateLimitMiddleware(
+        unused, sessionmaker=async_sessionmaker(), cookie_name="test"
+    )
+    for _ in range(CAPACITY):
+        assert limiter.retry_after("one", 100.0) is None
+    assert limiter.retry_after("one", 100.0) == 1
+    assert limiter.retry_after("two", 100.0) is None
+    assert limiter.retry_after("one", 100.2) is None
+    assert limiter.retry_after("one", 100.2) == 1
+    for i in range(MAX_BUCKETS - 2):
+        assert limiter.retry_after(str(i), 100.2) is None
+    assert limiter.retry_after("overflow", 100.2) == 60
+    assert len(limiter.buckets) == MAX_BUCKETS
+    assert limiter.retry_after("overflow", 161.0) is None
+    assert len(limiter.buckets) == 1
+
+
+@pytest.mark.parametrize(
+    "logger_name", ["httpx", "httpcore.http11", "anthropic._base_client", "google.auth"]
+)
+def test_provider_log_messages_do_not_expose_credentials(logger_name: str) -> None:
+    record = logging.makeLogRecord(
+        {
+            "msg": "HTTP Request: https://provider.example?token=sentinel-secret",
+            "name": logger_name,
+            "levelname": "DEBUG",
+        }
+    )
+    output = JsonFormatter().format(record)
+    assert "sentinel" not in output
+    assert json.loads(output)["message"] == REDACTED

@@ -16,6 +16,7 @@ from app.analytics.router import router as analytics_router
 from app.analytics.service import analyze_dataset, mark_analysis_failed
 from app.audit.router import router as audit_router
 from app.auth.csrf import CsrfMiddleware
+from app.auth.rate_limit import SessionRateLimitMiddleware
 from app.auth.router import router as auth_router
 from app.core.config import Settings, get_settings
 from app.core.db import create_engine, create_sessionmaker
@@ -122,6 +123,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Added innermost first: the last middleware added is the outermost.
     app.add_middleware(CsrfMiddleware, settings=settings)
+    app.add_middleware(
+        SessionRateLimitMiddleware,
+        sessionmaker=sessionmaker,
+        cookie_name=settings.session_cookie_name,
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[settings.frontend_origin],

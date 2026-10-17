@@ -62,10 +62,13 @@ jobs:
           TEST_DATABASE_ADMIN_URL: postgresql+psycopg://root_owner@localhost:5432/postgres
         run: |
           uv run pytest --cov --cov-fail-under=85
-          uv run coverage report --include='app/auth/*,app/tenancy/*' --fail-under=95
+          uv run coverage report --include='app/auth/*' --fail-under=95
+          uv run coverage report --include='app/tenancy/*' --fail-under=95
           uv run coverage report --include='app/analytics/*' --fail-under=95
           uv run coverage report --include='app/investigation/verification.py' --fail-under=95
           uv run coverage report --include='app/investigation/critic.py' --fail-under=95
+          uv run coverage report --include='app/recovery/*' --fail-under=95
+          uv run coverage report --include='app/actions/*' --fail-under=95
       - name: OpenAPI contract is up to date
         run: |
           uv run python -m scripts.export_openapi
@@ -97,6 +100,7 @@ jobs:
       - name: Dependency audit
         run: |
           npm audit --omit=dev --audit-level=high
+          node --test scripts/audit.test.mjs
           npm run audit:gate
       - run: npm run build
 

@@ -3,6 +3,8 @@
 > Baseline created in Phase 1. The demo shows the **real system on generated data**. No step relies on a scripted or hardcoded outcome.
 > If live output differs from the expectations below, the presenter shows the actual output and uses the matching branch in §6. The system is never patched to match the script.
 
+> **Current implementation note (AMD-21, Phase 10):** this document's original six-minute script remains a baseline, not a claim that every listed capability exists. The implemented journey is CSV upload → deterministic analysis → investigation → human clarification and interpretation versions → immutable recovery-plan revisions → owner approval/rejection → explicitly requested Google Sheets task export and read-back verification. Replay shows persisted versions/events. Correction overlays, hypothesis rejection/findings-review loops, sequence scrubbing, Slack, account provisioning UI, retention/deletion and production deployment are deferred by the recorded amendments. Use the implemented journey in `apps/web/e2e/workflow.spec.ts`; do not demonstrate the deferred steps as working features.
+
 ## 1. Objectives
 
 In six minutes, show that:

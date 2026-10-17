@@ -94,3 +94,5 @@ async def test_analytics_benchmark(
         await asyncio.to_thread(_append, output, json.dumps(results))
     assert analysis_body["status"] == "completed"
     assert analysis["seconds"] < 30
+    if orders_per_day == 260:
+        assert analysis["seconds"] <= 15  # NFR-02: the 100k analysis budget is stricter.

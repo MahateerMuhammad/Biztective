@@ -260,7 +260,12 @@ async def compare_periods(
         else Period(bounds.first_order, bounds.last_activity)
     )
     current = _period(start, end, default)
-    previous = current.previous()
+    try:
+        previous = current.previous()
+    except OverflowError as exc:
+        raise ApiError(
+            422, "invalid_period", "The preceding comparison period is outside the supported dates."
+        ) from exc
     dims = await _prepare_dimension(db, dataset_id, dimension)
     restrictions = _period_restrictions(current, bounds, config.return_maturity_days)
     cur = await queries.aggregate(db, dataset_id, current.start, current.end, dimensions=dims)

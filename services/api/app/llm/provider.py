@@ -187,18 +187,32 @@ class GroqProvider:
             payload = response.json()
             choice = payload["choices"][0]
             message = choice["message"]
-            usage = payload.get("usage") or {}
-        except (ValueError, KeyError, IndexError, TypeError) as exc:
+            usage = payload["usage"]
+            content = message.get("content")
+            finish = choice.get("finish_reason")
+            tokens_in = usage["prompt_tokens"]
+            tokens_out = usage["completion_tokens"]
+            # Treat malformed usage as unknown, so the gateway charges its full
+            # reservation rather than letting absent/negative counts evade the budget.
+            if (
+                (content is not None and not isinstance(content, str))
+                or (finish is not None and not isinstance(finish, str))
+                or type(tokens_in) is not int
+                or type(tokens_out) is not int
+                or tokens_in < 0
+                or tokens_out < 0
+            ):
+                raise ValueError("malformed completion")
+        except (ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
             raise ProviderError("unavailable") from exc
-        finish = choice.get("finish_reason")
         if message.get("refusal"):
             raise ProviderError("refused")
         if finish == "length":
             raise ProviderError("truncated")
         return LlmResponse(
-            text=message.get("content"),
+            text=content,
             model=str(payload.get("model", self.model)),
             stop_reason=finish,
-            tokens_in=int(usage.get("prompt_tokens", 0)),
-            tokens_out=int(usage.get("completion_tokens", 0)),
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
         )

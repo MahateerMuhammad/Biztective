@@ -259,7 +259,9 @@ async def test_cascade_rejection_follows_references(
     assert c[("customers", "V-099")] == 1
 
 
-async def test_duplicate_keys(app: FastAPI, client: httpx.AsyncClient, owner: Tenant) -> None:
+async def test_duplicate_keys(
+    app: FastAPI, client: httpx.AsyncClient, owner: Tenant, owner_engine: Engine
+) -> None:
     products = fx.with_rows(
         fx.PRODUCTS,
         "P3,Echo Tray,Kitchen,2.25,6.50",  # exact duplicate → warning, kept once
@@ -274,6 +276,31 @@ async def test_duplicate_keys(app: FastAPI, client: httpx.AsyncClient, owner: Te
     assert files["products"]["rows_duplicate"] == 1
     assert files["products"]["rows_rejected"] == 2
     assert files["products"]["rows_accepted"] == 3 + 40 - 1
+    with owner_engine.connect() as conn:
+        assert (
+            conn.scalar(
+                text("SELECT source_row FROM products WHERE dataset_id = :d AND product_id = 'P3'"),
+                {"d": detail["id"]},
+            )
+            == 4
+        )  # Retain the first accepted source row, not its exact duplicate at row 5.
+        assert (
+            conn.scalar(
+                text(
+                    "SELECT row_number FROM validation_issues "
+                    "WHERE dataset_id = :d AND file_kind = 'products' AND code = 'V-021'"
+                ),
+                {"d": detail["id"]},
+            )
+            == 5
+        )
+        assert (
+            conn.scalar(
+                text("SELECT count(*) FROM products WHERE dataset_id = :d AND product_id = 'P100'"),
+                {"d": detail["id"]},
+            )
+            == 0
+        )  # Both conflicting rows remain quarantined.
 
 
 async def test_value_validation_and_time_interpretation(

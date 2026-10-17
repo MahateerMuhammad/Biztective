@@ -124,3 +124,11 @@ test("a held lock answers busy instead of interleaving writes", () => {
   context.LockService.getDocumentLock = () => ({ tryLock: () => false, releaseLock: () => {} });
   assert.equal(rpc("titles").status, 503);
 });
+
+
+test("only own allowlisted operations are callable", () => {
+  const { rpc } = load();
+  for (const op of ["constructor", "toString", "__proto__", "hasOwnProperty", ["titles"]]) {
+    assert.equal(rpc(op).status, 400);
+  }
+});

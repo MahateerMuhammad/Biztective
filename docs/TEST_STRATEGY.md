@@ -34,6 +34,8 @@
 
 ## 4. Quality gates (CI must be green to merge or push to `main`)
 
+> **Amended by AMD-21 (Phase 10):** CI enforces separate ≥95% coverage gates for `app/auth/`, `app/tenancy/`, `app/analytics/`, `app/investigation/verification.py`, `app/investigation/critic.py`, `app/recovery/`, and `app/actions/` (the implemented integrations and executor). The dependency audit gate fails closed on registry errors and malformed reports. Performance tests include 20 concurrent authenticated reads and an exactly 500,000-line uploaded dataset; measurements and limitations are recorded in the Phase 10 engineering log. Live external tests require explicit authorization of their destination and writes.
+
 > **Amended by AMD-15 (Phase 6):** T-25/T-26/T-28 are implemented for the clarification interrupt only (`tests/investigation/test_hitl.py`, `tests/investigation/test_process_restart.py`, `tests/unit/test_hitl_units.py`); corrections (T-27), rejection and findings review stay with Phase 7. The browser test `apps/web/e2e/investigation.spec.ts` uses the seeded generator through `uv` (dev tooling, never runtime code).
 
 > **Amended by AMD-13 (Phase 5 completion audit):** the LLM output validator is implemented at `app/investigation/critic.py`; its coverage gate is ≥95%, as is `app/investigation/verification.py`. Phase 5 is backend-only and has no human interrupts or timeline UI. The real-provider integration test is opt-in (`ROOT_LIVE_LLM_TESTS=1` with `ANTHROPIC_API_KEY`); deterministic and fake-provider end-to-end investigations are required in CI. Unrun live tests must be reported as such. Original detection calibration and coverage thresholds remain unchanged.

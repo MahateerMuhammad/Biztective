@@ -3,6 +3,7 @@ from datetime import timedelta
 import httpx
 import pytest
 from argon2 import PasswordHasher
+from fastapi import FastAPI
 from sqlalchemy import Engine, select, text
 
 from app.auth import service
@@ -251,3 +252,28 @@ async def test_password_is_rehashed_when_parameters_change(
     assert stored != weak
     assert stored is not None
     assert stored.startswith("$argon2id$")
+
+
+async def test_concurrent_login_failures_cannot_bypass_account_quota(
+    app: FastAPI, owner_engine: Engine
+) -> None:
+    import asyncio
+
+    tenant = create_tenant(owner_engine, "alice")
+
+    async def attempt() -> int:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app, client=("203.0.113.10", 50000)),
+            base_url="http://testserver",
+        ) as other:
+            response = await login(other, tenant.email, "wrong password value")
+            return response.status_code
+
+    responses = await asyncio.gather(*(attempt() for _ in range(12)))
+    assert responses.count(401) == service.MAX_FAILURES_PER_ACCOUNT
+    assert responses.count(429) == 12 - service.MAX_FAILURES_PER_ACCOUNT
+    with owner_engine.connect() as conn:
+        assert (
+            conn.scalar(text("SELECT count(*) FROM auth_attempts"))
+            == service.MAX_FAILURES_PER_ACCOUNT
+        )

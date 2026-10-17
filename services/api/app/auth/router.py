@@ -61,6 +61,7 @@ async def login(
     email = service.normalise_email(body.email)
     host = client_host(request)
 
+    await service.lock_login_attempt(db, secret=secret, email=email, client_host=host)
     retry_after = await service.throttle_retry_after(
         db, secret=secret, email=email, client_host=host
     )

@@ -88,7 +88,7 @@ security and no DDL rights; `/api/v1/readyz` reports not-ready if it is pointed 
 cd services/api
 uv run ruff check . && uv run ruff format --check . && uv run mypy
 uv run pytest --cov --cov-fail-under=85
-uv run pytest -m perf -s        # ingestion benchmark (~20k and ~100k order lines)
+uv run pytest -m perf -s        # uploads/analysis through 500k lines; 20-user API concurrency
 uv run pip-audit
 
 # Frontend

@@ -1,5 +1,6 @@
 """Login, session lifecycle and throttling (SEC-01, SEC-02, SEC-04)."""
 
+import asyncio
 import hashlib
 import hmac
 import math
@@ -8,7 +9,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import func, insert, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.passwords import hash_password, needs_rehash, verify_password
@@ -45,6 +46,21 @@ def normalise_email(email: str) -> str:
 def _keyed_hash(secret: bytes, value: str) -> str:
     # Keyed so the throttling table cannot be reversed with a dictionary of emails or IPs.
     return hmac.new(secret, value.encode(), hashlib.sha256).hexdigest()
+
+
+async def lock_login_attempt(
+    session: AsyncSession, *, secret: bytes, email: str, client_host: str
+) -> None:
+    """Serialize throttle check and recorded outcome for both shared quota dimensions.
+
+    Acquire in a consistent order so overlapping account/IP pairs cannot deadlock.
+    Locks are transaction-local and released with the login's audit/attempt commit.
+    """
+    keys = sorted((_keyed_hash(secret, "email:" + email), _keyed_hash(secret, "ip:" + client_host)))
+    for key in keys:
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"), {"key": key}
+        )
 
 
 async def throttle_retry_after(
@@ -87,12 +103,14 @@ async def record_attempt(
 
 async def authenticate(session: AsyncSession, *, email: str, password: str) -> User | None:
     user = await session.scalar(select(User).where(User.email == email))
-    valid = verify_password(user.password_hash if user else None, password)
+    valid = await asyncio.to_thread(verify_password, user.password_hash if user else None, password)
     if user is None or not valid or not user.is_active:
         return None
     if needs_rehash(user.password_hash):
         await session.execute(
-            update(User).where(User.id == user.id).values(password_hash=hash_password(password))
+            update(User)
+            .where(User.id == user.id)
+            .values(password_hash=await asyncio.to_thread(hash_password, password))
         )
     return user
 

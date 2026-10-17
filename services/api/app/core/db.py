@@ -22,6 +22,7 @@ def create_engine(settings: Settings) -> AsyncEngine:
         pool_size=settings.db_pool_size,
         max_overflow=settings.db_pool_size,
         pool_pre_ping=True,
+        hide_parameters=True,  # SQL errors must not include uploaded data or credentials.
         connect_args={"connect_timeout": 5},
     )
 

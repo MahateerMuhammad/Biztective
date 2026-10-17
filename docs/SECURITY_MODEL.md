@@ -33,6 +33,8 @@
 
 ## 3. Security requirements
 
+> **Amended by AMD-21 (Phase 10):** complete the existing session-global limiter and concurrent login throttle; reauthorize every external mutation, and redact nested log fields and exception values. This hardening does not grant new permissions or add new external action types.
+
 | ID | Requirement | ASVS / OWASP reference |
 |---|---|---|
 | SEC-01 | Passwords hashed with Argon2id (argon2-cffi defaults or stronger: memory ≥ 19 MiB, t ≥ 2). Length 12–128. Must not equal the email. No composition rules. Rehash on parameter change | ASVS V2.1, V2.4 |

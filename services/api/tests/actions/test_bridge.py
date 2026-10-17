@@ -242,3 +242,35 @@ async def test_googles_html_error_page_is_transient_not_misconfiguration(
     assert done["status"] == "verified", (done["error_code"], done["attempts"])
     assert len(rows_of(google, REVIEW)) == 1
     assert google.ops("append") == 1
+
+
+@pytest.mark.parametrize("failure", ["429", "connect"])
+async def test_result_fetch_failure_never_repeats_the_write(failure: str) -> None:
+    from app.actions.bridge import BridgeClient
+    from app.actions.sheets import SheetsError
+
+    posts = 0
+
+    async def handle(request: httpx.Request) -> httpx.Response:
+        nonlocal posts
+        if request.method == "POST":
+            posts += 1
+            return httpx.Response(
+                302, headers={"Location": "https://script.googleusercontent.com/macros/echo?id=1"}
+            )
+        if failure == "connect":
+            raise httpx.ConnectError("result unavailable", request=request)
+        return httpx.Response(429, headers={"Retry-After": "1"})
+
+    async def sleep(_: float) -> None:
+        pass
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as http:
+        client = BridgeClient(
+            url=BRIDGE_URL, token=TOKEN, http=http, max_retries=3, backoff=0, sleep=sleep
+        )
+        with pytest.raises(SheetsError) as error:
+            await client.append(SID, "'ROOT Review Tasks'!A:L", [["key", "task"]])
+    assert error.value.retryable
+    assert error.value.ambiguous  # caller must read the spreadsheet before another append
+    assert posts == 1

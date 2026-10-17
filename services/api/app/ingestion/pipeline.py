@@ -404,8 +404,15 @@ async def _duplicate_rules(session: AsyncSession, sink: IssueSink, kind: FileKin
         kind,
         "V-021",
         key,
-        f"""s.source_row NOT IN (SELECT min(source_row) FROM stg_{kind} WHERE {ACCEPTED}
-                                GROUP BY {key})""",
+        # A large NOT IN set can force a repeatedly scanned materialized subplan once
+        # it outgrows work_mem. Rank each key once, then join only actual duplicates.
+        f"""s.source_row IN (
+                SELECT source_row FROM (
+                    SELECT source_row,
+                           row_number() OVER (PARTITION BY {key} ORDER BY source_row) AS occurrence
+                    FROM stg_{kind} WHERE {ACCEPTED}
+                ) ranked WHERE occurrence > 1
+            )""",
         drop=True,
     )
 

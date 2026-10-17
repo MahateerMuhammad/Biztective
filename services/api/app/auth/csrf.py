@@ -89,4 +89,4 @@ class CsrfMiddleware:
         expected = csrf_token_for(
             self.secret, nonce, cookies.get(self.settings.session_cookie_name)
         )
-        return hmac.compare_digest(presented.decode("latin-1"), expected)
+        return hmac.compare_digest(presented, expected.encode("ascii"))

@@ -229,3 +229,43 @@ async def test_unhandled_error_is_generic_500(db_urls: DatabaseUrls) -> None:
     assert body["request_id"] == response.headers["x-request-id"]
     for leaked in ("secret internal detail", "/etc/passwd", "SELECT", "Traceback", "RuntimeError"):
         assert leaked not in response.text
+
+
+async def test_non_ascii_csrf_header_is_rejected(client: httpx.AsyncClient) -> None:
+    headers = await csrf_headers(client)
+    raw_headers = [(key.encode(), value.encode()) for key, value in headers.items()]
+    raw_headers = [
+        (key, b"\xff" if key.lower() == b"x-csrf-token" else value) for key, value in raw_headers
+    ]
+    response = await client.post("/api/v1/auth/login", json=LOGIN_BODY, headers=raw_headers)
+    assert response.status_code == 403
+    assert response.json()["code"] == "csrf_failed"
+
+
+async def test_verified_session_global_rate_limit(
+    db_urls: DatabaseUrls, owner_engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    from app.auth import rate_limit
+    from app.auth.rate_limit import CAPACITY
+
+    monkeypatch.setattr(rate_limit, "time", SimpleNamespace(monotonic=lambda: 100.0))
+
+    tenant = create_tenant(owner_engine, "limited")
+    application = create_app(make_settings(db_urls.app))
+    async with (
+        application.router.lifespan_context(application),
+        httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=application), base_url="http://t"
+        ) as other,
+    ):
+        assert (await login(other, tenant.email)).status_code == 200
+        for _ in range(CAPACITY):
+            assert (await other.get("/api/v1/healthz")).status_code == 200
+        response = await other.get("/api/v1/healthz")
+        assert response.status_code == 429
+        assert response.headers["retry-after"]
+        assert response.json()["code"] == "rate_limited"
+        other.cookies.set("root_session", "A" * 43)
+        assert (await other.get("/api/v1/auth/me")).status_code == 401

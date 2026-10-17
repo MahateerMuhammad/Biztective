@@ -161,6 +161,7 @@ class RetryingClient:
     backoff: float
     sleep: Callable[[float], Awaitable[None]]
     on_write: Callable[[], None] = lambda: None
+    before_effect: Callable[[bool], Awaitable[None]] | None = None
     clock: Callable[[], float] = time.time
     calls: list[dict[str, Any]] = field(default_factory=list)
 
@@ -174,6 +175,12 @@ class RetryingClient:
         headers: dict[str, str] | None = None,
         **kwargs: Any,
     ) -> httpx.Response:
+        if (
+            self.before_effect is not None
+            and method != "GET"
+            and op in {"add_tabs", "put_rows", "append"}
+        ):
+            await self.before_effect(write)
         started = time.perf_counter()
         status: int | str = "no_response"
         try:

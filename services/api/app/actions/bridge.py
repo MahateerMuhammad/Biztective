@@ -59,13 +59,20 @@ class BridgeClient(RetryingClient):
                     )
                 hops += 1
                 # The script has already run; fetching its answer can still fail ambiguously.
-                response = await self._send(op, "GET", location, write=write)
+                try:
+                    response = await self._send(op, "GET", location, write=write)
+                except SheetsError as exc:
+                    # Even failure to connect to the result URL says nothing about the
+                    # original POST: the script has already run. Never resend it blindly.
+                    if write:
+                        exc.ambiguous = True
+                    raise
             if response.status_code == 429 or response.status_code >= 500:
                 raise SheetsError(
                     "rate_limited" if response.status_code == 429 else "provider_unavailable",
                     status=response.status_code,
                     retryable=True,
-                    ambiguous=write and response.status_code >= 500,
+                    ambiguous=write and (hops > 0 or response.status_code >= 500),
                     retry_after=_retry_after(response),
                 )
             try:

@@ -47,6 +47,10 @@ WRITE_ROUNDS = 3
 MAX_LISTED = 50
 
 
+class ActionLeaseLostError(Exception):
+    """An older attempt must leave its replacement and the destination untouched."""
+
+
 class AuthorizationLostError(Exception):
     def __init__(self, code: str) -> None:
         super().__init__(code)
@@ -140,7 +144,11 @@ class ActionRuntime:
         return "service_account" if self.account is not None else None
 
     @contextlib.asynccontextmanager
-    async def client(self, on_write: Callable[[], None] = lambda: None) -> AsyncIterator[SheetsApi]:
+    async def client(
+        self,
+        on_write: Callable[[], None] = lambda: None,
+        before_effect: Callable[[bool], Awaitable[None]] | None = None,
+    ) -> AsyncIterator[SheetsApi]:
         mode = self.mode
         if mode is None:
             raise SheetsError("integration_unavailable")
@@ -150,6 +158,7 @@ class ActionRuntime:
             "backoff": self.settings.sheets_backoff_seconds,
             "sleep": self.sleep,
             "on_write": on_write,
+            "before_effect": before_effect,
         }
         async with httpx.AsyncClient(
             transport=self.transport, timeout=timeout, follow_redirects=False
@@ -174,6 +183,8 @@ class ActionRuntime:
         try:
             async with asyncio.timeout(ATTEMPT_TIMEOUT_SECONDS):
                 await self._execute(sessionmaker, business_id, action_id, attempt)
+        except ActionLeaseLostError:
+            return
         except AuthorizationLostError as exc:
             await self._settle(sessionmaker, business_id, action_id, attempt, exc.code, False)
         except SheetsError as exc:
@@ -209,7 +220,7 @@ class ActionRuntime:
         after its worker died takes the action over."""
         async with transaction(sessionmaker, business_id) as session:
             action = await session.get(PlanAction, action_id, with_for_update=True)
-            if action is None or action.status != "pending":
+            if action is None or action.status not in ("pending", "succeeded"):
                 return None
             now = utcnow()
             if (
@@ -226,7 +237,13 @@ class ActionRuntime:
             )
             problem = await authorization_problem(session, action)
             if problem is not None:
-                await self._finish(session, action, "failed", problem)
+                sent = await session.scalar(
+                    select(func.bool_or(ActionExecution.writes_sent)).where(
+                        ActionExecution.action_id == action_id
+                    )
+                )
+                status = "manual_review" if sent or action.status == "succeeded" else "failed"
+                await self._finish(session, action, status, problem)
                 await record_audit(
                     session,
                     action="action.refused",
@@ -259,16 +276,26 @@ class ActionRuntime:
         return Attempt(number)
 
     async def _recheck(
-        self, sessionmaker: async_sessionmaker[AsyncSession], business_id: UUID, action_id: UUID
+        self,
+        sessionmaker: async_sessionmaker[AsyncSession],
+        business_id: UUID,
+        action_id: UUID,
+        attempt: Attempt,
     ) -> PlanAction:
         async with transaction(sessionmaker, business_id) as session:
             action = await session.get(PlanAction, action_id)
             if action is None:  # pragma: no cover - rows are never deleted while pending
                 raise AuthorizationLostError("action_missing")
+            self._check_attempt(action, attempt)
             problem = await authorization_problem(session, action)
         if problem is not None:
             raise AuthorizationLostError(problem)
         return action
+
+    @staticmethod
+    def _check_attempt(action: PlanAction, attempt: Attempt) -> None:
+        if action.attempts != attempt.number or action.status not in ("pending", "succeeded"):
+            raise ActionLeaseLostError
 
     async def _read(
         self, client: SheetsApi, sid: str, tabs: list[dict[str, Any]]
@@ -308,7 +335,7 @@ class ActionRuntime:
         action_id: UUID,
         attempt: Attempt,
     ) -> None:
-        action = await self._recheck(sessionmaker, business_id, action_id)
+        action = await self._recheck(sessionmaker, business_id, action_id, attempt)
         sid = action.destination["spreadsheet_id"]
         tabs: list[dict[str, Any]] = action.payload["tabs"]
         prefix = action.id.hex
@@ -318,7 +345,28 @@ class ActionRuntime:
         def sent() -> None:
             attempt.writes_sent = True
 
-        async with self.client(on_write=sent) as client:
+        async def before_effect(row_write: bool) -> None:
+            # Run for every actual provider mutation, including transport retries. Persist
+            # append intent before sending: a process kill must not erase an unknown outcome.
+            await self._recheck(sessionmaker, business_id, action_id, attempt)
+            if row_write:
+                async with transaction(sessionmaker, business_id) as session:
+                    current = await session.get(PlanAction, action_id, with_for_update=True)
+                    if current is None:
+                        raise ActionLeaseLostError
+                    self._check_attempt(current, attempt)
+                    await session.execute(
+                        update(ActionExecution)
+                        .where(
+                            ActionExecution.action_id == action_id,
+                            ActionExecution.attempt == attempt.number,
+                            ActionExecution.status == "started",
+                        )
+                        .values(writes_sent=True)
+                    )
+                sent()
+
+        async with self.client(on_write=sent, before_effect=before_effect) as client:
             try:
                 for round_ in range(WRITE_ROUNDS + 1):
                     found = await self._read(client, sid, tabs)
@@ -335,7 +383,7 @@ class ActionRuntime:
                         break
                     if round_ == WRITE_ROUNDS:
                         raise SheetsError("write_unconfirmed", retryable=True)
-                    await self._recheck(sessionmaker, business_id, action_id)
+                    await self._recheck(sessionmaker, business_id, action_id, attempt)
                     try:
                         for title, rows in missing.items():
                             if rows:
@@ -354,13 +402,14 @@ class ActionRuntime:
                         )
             finally:
                 attempt.calls = client.calls
-        await self._record_success(sessionmaker, business_id, action_id, sid, refs)
+        await self._record_success(sessionmaker, business_id, action_id, sid, refs, attempt)
         verification = compare(tabs, found, prefix)
         status = "verified" if verification["ok"] else "manual_review"
         async with transaction(sessionmaker, business_id) as session:
             row = await session.get(PlanAction, action_id, with_for_update=True)
             if row is None or row.status not in ("pending", "succeeded"):  # pragma: no cover
                 return
+            self._check_attempt(row, attempt)
             await self._close_attempt(session, action_id, attempt, "completed", None)
             await session.execute(
                 update(PlanAction)
@@ -394,11 +443,15 @@ class ActionRuntime:
         action_id: UUID,
         sid: str,
         refs: dict[str, str | None],
+        attempt: Attempt,
     ) -> None:
         """Every row is confirmed present: record `succeeded` before verifying."""
         async with transaction(sessionmaker, business_id) as session:
             row = await session.get(PlanAction, action_id, with_for_update=True)
-            if row is None or row.status != "pending":
+            if row is None:
+                return
+            self._check_attempt(row, attempt)
+            if row.status != "pending":
                 return
             await session.execute(
                 update(PlanAction)
@@ -460,6 +513,9 @@ class ActionRuntime:
         """A retryable failure: close the attempt and release the lease; the action stays
         pending for the queue's next run."""
         async with transaction(sessionmaker, business_id) as session:
+            action = await session.get(PlanAction, action_id, with_for_update=True)
+            if action is None or action.attempts != attempt.number:
+                return
             await self._close_attempt(session, action_id, attempt, "failed", code)
             await session.execute(
                 update(PlanAction)
@@ -485,7 +541,20 @@ class ActionRuntime:
             if action is None or action.status not in ("pending", "succeeded"):
                 return
             if attempt is not None:
+                if action.attempts != attempt.number:
+                    return
                 await self._close_attempt(session, action_id, attempt, "failed", code)
+            else:
+                # An expired final job lease has no new attempt. Close the crashed one
+                # while preserving its persisted append intent for outcome classification.
+                await session.execute(
+                    update(ActionExecution)
+                    .where(
+                        ActionExecution.action_id == action_id,
+                        ActionExecution.status == "started",
+                    )
+                    .values(status="interrupted", error_code=code, finished_at=func.now())
+                )
             sent = await session.scalar(
                 select(func.bool_or(ActionExecution.writes_sent)).where(
                     ActionExecution.action_id == action_id

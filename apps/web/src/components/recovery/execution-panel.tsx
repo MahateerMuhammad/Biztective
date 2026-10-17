@@ -96,7 +96,7 @@ export function ExecutionPanel({
       ) : null}
       {error ? (
         <Alert variant="destructive">
-          <AlertTitle>Nothing was started</AlertTitle>
+          <AlertTitle>Could not confirm the request</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}

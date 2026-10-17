@@ -25,7 +25,8 @@ function doPost(e) {
   if (body.spreadsheet_id !== ss.getId()) {
     return reply({ ok: false, status: 403, error: 'spreadsheet_not_allowed' });
   }
-  const op = OPS[body.op];
+  const op = typeof body.op === 'string' && Object.prototype.hasOwnProperty.call(OPS, body.op)
+    ? OPS[body.op] : null;
   if (!op) return reply({ ok: false, status: 400, error: 'unknown_op' });
   const lock = LockService.getDocumentLock();
   if (!lock.tryLock(20000)) return reply({ ok: false, status: 503, error: 'busy' });

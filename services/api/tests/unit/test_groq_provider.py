@@ -142,3 +142,29 @@ def test_groq_requires_a_key_and_is_selected_from_settings() -> None:
     assert isinstance(provider, GroqProvider)
     assert (provider.name, provider.model) == ("groq", "openai/gpt-oss-120b")
     assert provider_from_settings(make_settings(url)) is None  # disabled by default
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"choices": [{"message": []}]},
+        {"choices": [{"message": {"content": ["unexpected block"]}}]},
+        {"choices": [{"message": {"content": "{}"}, "finish_reason": []}]},
+        {"usage": None},
+        {"usage": {}},
+        {"usage": {"prompt_tokens": -1, "completion_tokens": 1}},
+        {"usage": {"prompt_tokens": 1, "completion_tokens": -1}},
+        {"usage": {"prompt_tokens": "unknown", "completion_tokens": 1}},
+        {"usage": {"prompt_tokens": True, "completion_tokens": 1}},
+        {"usage": {"prompt_tokens": 1.5, "completion_tokens": 1}},
+    ],
+)
+async def test_malformed_completion_is_a_budgeted_provider_failure(change: dict[str, Any]) -> None:
+    completion = {**COMPLETION, **change}
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=completion)
+
+    with pytest.raises(ProviderError) as exc:
+        await adapter(handler).complete(REQUEST)
+    assert exc.value.kind == "unavailable"

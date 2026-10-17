@@ -273,3 +273,17 @@ async def test_unknown_incident_and_failed_analysis_rerun(
     assert again["status"] == "insufficient_data"
     with owner_engine.connect() as conn:
         assert conn.scalar(text("SELECT count(*) FROM jobs WHERE type = 'analyze_dataset'")) == 2
+
+
+@pytest.mark.parametrize(
+    ("start", "end"),
+    [("0001-01-01", "0001-01-01"), ("0001-01-04", "0001-01-10")],
+)
+async def test_comparison_rejects_previous_period_date_underflow(
+    client: httpx.AsyncClient, reference: str, start: str, end: str
+) -> None:
+    response = await client.get(
+        f"{reference}/metrics/comparison", params={"from": start, "to": end}
+    )
+    assert response.status_code == 422
+    assert response.json()["code"] == "invalid_period"

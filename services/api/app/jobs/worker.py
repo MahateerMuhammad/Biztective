@@ -37,7 +37,7 @@ async def _heartbeat(sessionmaker: async_sessionmaker[AsyncSession], job: Leased
     while True:
         await asyncio.sleep(HEARTBEAT_SECONDS)
         async with sessionmaker() as session:
-            await queue.extend_lease(session, job.id)
+            await queue.extend_lease(session, job)
 
 
 async def process_next_job(
@@ -52,6 +52,10 @@ async def process_next_job(
         return False
     heartbeat = asyncio.create_task(_heartbeat(sessionmaker, job))
     try:
+        # An expired final lease is reclaimed once to deliver terminal failure through
+        # the normal hook, but must never run the costly handler for another attempt.
+        if job.attempts > job.max_attempts:
+            raise PermanentJobError("lease_exhausted")
         await handlers[job.type](sessionmaker, job)
     except PermanentJobError as exc:
         await _record_failure(sessionmaker, job, exc.code, False, on_final_failure)
@@ -67,7 +71,7 @@ async def process_next_job(
         await _record_failure(sessionmaker, job, "unexpected_error", False, on_final_failure)
     else:
         async with sessionmaker() as session:
-            await queue.finish(session, job.id)
+            await queue.finish(session, job)
     finally:
         heartbeat.cancel()
         with contextlib.suppress(asyncio.CancelledError):
@@ -84,7 +88,7 @@ async def _record_failure(
 ) -> None:
     async with sessionmaker() as session:
         retrying = await queue.fail(session, job, error_code=code, retryable=retryable)
-    if not retrying and on_final_failure is not None:
+    if retrying is False and on_final_failure is not None:
         await on_final_failure(job, code)
 
 

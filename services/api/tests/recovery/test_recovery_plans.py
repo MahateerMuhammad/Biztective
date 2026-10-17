@@ -731,3 +731,194 @@ async def test_versions_and_decisions_cannot_be_rewritten(
             with pytest.raises(DBAPIError) as exc:
                 conn.execute(text(statement))
         assert message in str(exc.value), statement
+
+
+async def test_recovery_plan_boundary_and_runtime_guards(
+    app: FastAPI,
+    client: httpx.AsyncClient,
+    owner: Tenant,
+    investigation: dict[str, Any],
+    proposed: dict[str, Any],
+    owner_engine: Engine,
+) -> None:
+    """Exercise idempotent plan creation/revision, version inspection, no-op/control-char
+    rejection, and runtime re-entry/failure guards."""
+    from app.jobs.queue import LeasedJob
+    from app.jobs.worker import PermanentJobError
+    from app.models import PlanDecision, RecoveryPlan, RecoveryPlanVersion
+    from app.recovery.graph import Nodes
+
+    # 1. Duplicate open plan refused; idempotent create replays 202.
+    duplicate = await create(client, owner.business_id, investigation["id"])
+    assert (duplicate.status_code, duplicate.json()["code"]) == (409, "plan_exists")
+
+    # 2. Version list & unknown version 404.
+    versions = await client.get(
+        f"/api/v1/businesses/{owner.business_id}/recovery-plans/{proposed['id']}/versions"
+    )
+    assert versions.status_code == 200
+    assert [v["version"] for v in versions.json()["items"]] == [1]
+    missing_ver = await client.get(
+        f"/api/v1/businesses/{owner.business_id}/recovery-plans/{proposed['id']}/versions/99"
+    )
+    assert missing_ver.status_code == 404
+
+    # 3. Control characters in reason and no-op edits are rejected with 422.
+    bad_reason = await decide(
+        client,
+        owner.business_id,
+        proposed["id"],
+        "reject",
+        binding(proposed) | {"reason": "bad\x00reason"},
+    )
+    assert (bad_reason.status_code, bad_reason.json()["code"]) == (422, "validation_error")
+    noop = await decide(
+        client,
+        owner.business_id,
+        proposed["id"],
+        "request-changes",
+        binding(proposed) | {"edits": {"horizon_weeks": 4}},
+    )
+    assert (noop.status_code, noop.json()["code"]) == (422, "validation_error")
+
+    # 4. Revising an unapproved plan returns 409 invalid_state.
+    headers = await csrf_headers(client)
+    premature_rev = await client.post(
+        f"/api/v1/businesses/{owner.business_id}/recovery-plans/{proposed['id']}/revisions",
+        json={
+            "version": proposed["current"]["version"],
+            "content_hash": proposed["current"]["content_hash"],
+            "edits": {"horizon_weeks": 8},
+        },
+        headers=headers,
+    )
+    assert (premature_rev.status_code, premature_rev.json()["code"]) == (409, "invalid_state")
+
+    # 5. Approve, then revise with Idempotency-Key and replay it.
+    valid = await approvable(app, client, owner, proposed)
+    approved = await decided(app, client, owner.business_id, valid, "approve")
+    rev_payload = {
+        "version": approved["current"]["version"],
+        "content_hash": approved["current"]["content_hash"],
+        "edits": {"horizon_weeks": 8},
+        "reason": "Extend horizon.",
+    }
+    rev1 = await client.post(
+        f"/api/v1/businesses/{owner.business_id}/recovery-plans/{proposed['id']}/revisions",
+        json=rev_payload,
+        headers=headers | {"Idempotency-Key": "revise-idem-key-1"},
+    )
+    rev2 = await client.post(
+        f"/api/v1/businesses/{owner.business_id}/recovery-plans/{proposed['id']}/revisions",
+        json=rev_payload,
+        headers=headers | {"Idempotency-Key": "revise-idem-key-1"},
+    )
+    assert rev1.status_code == rev2.status_code == 202
+    assert rev1.json() == rev2.json()
+    await run_jobs(app)
+
+    # 6. Runtime re-entry when already paused without a decision, and mark_failed.
+    sessionmaker = app.state.sessionmaker
+    runtime = app.state.recovery
+    fake_job = LeasedJob(
+        id=uuid.uuid7(),
+        type="run_recovery_plan",
+        business_id=owner.business_id,
+        payload={"plan_id": proposed["id"]},
+        attempts=1,
+        max_attempts=3,
+    )
+    # Set status to queued while checkpoint is still paused without a decision for version 3:
+    with owner_engine.begin() as conn:
+        conn.execute(
+            text("UPDATE recovery_plans SET status = 'queued' WHERE id = :p"),
+            {"p": proposed["id"]},
+        )
+    await runtime.run(sessionmaker, fake_job)
+    paused_again = await detail(client, owner.business_id, proposed["id"])
+    assert paused_again["status"] == "awaiting_decision"
+
+    # Re-entering draft_plan when current_version >= 1 returns existing version:
+    nodes = Nodes(sessionmaker, app.state.settings, None)
+    draft_again = await nodes.draft_plan(
+        {
+            "plan_id": proposed["id"],
+            "business_id": str(owner.business_id),
+            "version": 3,
+            "decision_id": None,
+            "outcome": None,
+        }
+    )
+    assert draft_again["version"] == 3
+
+    # Re-entering apply_decision on an already-applied decision routes cleanly:
+    applied_decision_id = paused_again["decisions"][0]["id"]
+    routed = await nodes.apply_decision(
+        {
+            "plan_id": proposed["id"],
+            "business_id": str(owner.business_id),
+            "version": 3,
+            "decision_id": applied_decision_id,
+            "outcome": None,
+        }
+    )
+    assert routed["outcome"] == "changed"
+    assert Nodes._route("approve", "applied", 2) == {"outcome": "approved"}
+    assert Nodes._route("reject", "applied", 1) == {"outcome": "rejected"}
+
+    # Unsupported graph version and missing business_id raise PermanentJobError.
+    with pytest.raises(PermanentJobError):
+        await runtime.run(
+            sessionmaker,
+            LeasedJob(
+                id=uuid.uuid7(),
+                type="run_recovery_plan",
+                business_id=None,
+                payload={"plan_id": proposed["id"]},
+                attempts=1,
+                max_attempts=3,
+            ),
+        )
+    await runtime.mark_failed(
+        sessionmaker,
+        LeasedJob(
+            id=uuid.uuid7(),
+            type="run_recovery_plan",
+            business_id=None,
+            payload={"plan_id": proposed["id"]},
+            attempts=1,
+            max_attempts=3,
+        ),
+        "ignored",
+    )
+    with owner_engine.begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE recovery_plans SET status = 'queued', graph_version = 'old' WHERE id = :p"
+            ),
+            {"p": proposed["id"]},
+        )
+    with pytest.raises(PermanentJobError) as exc_info:
+        await runtime.run(sessionmaker, fake_job)
+    assert exc_info.value.code == "graph_version_unsupported"
+    await runtime.mark_failed(sessionmaker, fake_job, "graph_version_unsupported")
+    failed_plan = await detail(client, owner.business_id, proposed["id"])
+    assert (failed_plan["status"], failed_plan["error_code"]) == (
+        "failed",
+        "graph_version_unsupported",
+    )
+
+    # Now that the previous plan is terminal (failed), idempotent create replays 202:
+    c1 = await client.post(
+        f"/api/v1/businesses/{owner.business_id}/investigations/{investigation['id']}/recovery-plans",
+        json={},
+        headers=headers | {"Idempotency-Key": "create-plan-idem-1"},
+    )
+    c2 = await client.post(
+        f"/api/v1/businesses/{owner.business_id}/investigations/{investigation['id']}/recovery-plans",
+        json={},
+        headers=headers | {"Idempotency-Key": "create-plan-idem-1"},
+    )
+    assert c1.status_code == c2.status_code == 202
+    assert c1.json() == c2.json()
+    _ = (PlanDecision, RecoveryPlan, RecoveryPlanVersion)
