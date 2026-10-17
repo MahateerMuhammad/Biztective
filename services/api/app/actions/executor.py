@@ -22,9 +22,11 @@ from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.actions import payload as payloads
+from app.actions.bridge import BridgeClient
 from app.actions.service import authorization_problem, utcnow
 from app.actions.sheets import (
     ServiceAccount,
+    SheetsApi,
     SheetsClient,
     SheetsError,
     TokenCache,
@@ -121,28 +123,43 @@ class ActionRuntime:
             load_service_account(secret.get_secret_value()) if secret is not None else None
         )
         self.tokens = TokenCache()
+        # AMD-19: an Apps Script web app owned by the business, preferred when configured.
+        self.bridge_url = settings.sheets_bridge_url
+        self.bridge_token = (
+            settings.sheets_bridge_token.get_secret_value()
+            if settings.sheets_bridge_token is not None
+            else None
+        )
         # Tests replace the transport with a fake Google; production uses the network.
         self.transport: httpx.AsyncBaseTransport | None = None
 
+    @property
+    def mode(self) -> str | None:
+        if self.bridge_url is not None and self.bridge_token is not None:
+            return "apps_script"
+        return "service_account" if self.account is not None else None
+
     @contextlib.asynccontextmanager
-    async def client(
-        self, on_write: Callable[[], None] = lambda: None
-    ) -> AsyncIterator[SheetsClient]:
-        if self.account is None:
+    async def client(self, on_write: Callable[[], None] = lambda: None) -> AsyncIterator[SheetsApi]:
+        mode = self.mode
+        if mode is None:
             raise SheetsError("integration_unavailable")
         timeout = httpx.Timeout(self.settings.sheets_timeout_seconds)
+        common: dict[str, Any] = {
+            "max_retries": self.settings.sheets_max_retries,
+            "backoff": self.settings.sheets_backoff_seconds,
+            "sleep": self.sleep,
+            "on_write": on_write,
+        }
         async with httpx.AsyncClient(
             transport=self.transport, timeout=timeout, follow_redirects=False
         ) as http:
-            yield SheetsClient(
-                account=self.account,
-                http=http,
-                tokens=self.tokens,
-                max_retries=self.settings.sheets_max_retries,
-                backoff=self.settings.sheets_backoff_seconds,
-                sleep=self.sleep,
-                on_write=on_write,
-            )
+            if self.bridge_url is not None and self.bridge_token is not None:
+                yield BridgeClient(
+                    url=self.bridge_url, token=self.bridge_token, http=http, **common
+                )
+            elif self.account is not None:
+                yield SheetsClient(account=self.account, tokens=self.tokens, http=http, **common)
 
     # ------------------------------------------------------------------- job handler
 
@@ -254,7 +271,7 @@ class ActionRuntime:
         return action
 
     async def _read(
-        self, client: SheetsClient, sid: str, tabs: list[dict[str, Any]]
+        self, client: SheetsApi, sid: str, tabs: list[dict[str, Any]]
     ) -> dict[str, list[list[str]]]:
         """The destination's rows per tab (header excluded); creates missing tabs and refuses a
         tab whose header is not ours."""

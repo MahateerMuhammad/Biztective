@@ -63,6 +63,8 @@
 
 > **Amended by AMD-18 (Phase 8):** SEC-15: Google APIs are reached through `httpx` (not the discovery client) at two constant hosts, `oauth2.googleapis.com` and `sheets.googleapis.com`; the key file's own token URI is ignored. SEC-13: execution is a separate owner request after approval; re-authorization happens before every write.
 
+> **Amended by AMD-19 (Phase 8):** SEC-15 also allows `script.google.com` (the configured Apps Script web app only) and one redirect hop to `script.googleusercontent.com`. The bridge token is a backend secret like the service-account key.
+
 ## 4. Authentication and sessions
 
 ### 4.1 Registration and login

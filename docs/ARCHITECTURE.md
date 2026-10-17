@@ -479,6 +479,8 @@ Lease expiry during step 3 → the job is re-leased → step 1 finds `executing`
 
 > **Amended by AMD-18 (Phase 8):** Google Sheets only (Slack not delivered). `google-auth` signs the service-account JWT and `httpx` calls the Sheets REST API directly. Tabs `ROOT Review Tasks` and `ROOT Service Queue` with a key column replace the §11.3 action types. Global spreadsheet uniqueness covers verified bindings only.
 
+> **Amended by AMD-19 (Phase 8):** alternatively, an Apps Script web app inside the business's spreadsheet (`integrations/apps_script/Code.gs`) reached at `SHEETS_BRIDGE_URL` with `SHEETS_BRIDGE_TOKEN`; same executor, idempotency and verification.
+
 ### 11.1 Google Sheets model (ADR-012)
 
 - One Google Cloud **service account** for the deployment. Its JSON key is in the env var `GOOGLE_SERVICE_ACCOUNT_JSON` (base64), backend only. Scope: `https://www.googleapis.com/auth/spreadsheets`. Library: the official Google API Python client with `google-auth`.

@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     sheets_timeout_seconds: float = Field(default=20.0, gt=0, le=120)
     sheets_max_retries: int = Field(default=4, ge=0, le=8)
     sheets_backoff_seconds: float = Field(default=1.0, ge=0, le=30)
+    # AMD-19: Apps Script web app of the business's spreadsheet, and its shared token.
+    sheets_bridge_url: str | None = Field(
+        default=None, pattern=r"^https://script\.google\.com/macros/s/[A-Za-z0-9_-]{20,200}/exec$"
+    )
+    sheets_bridge_token: SecretStr | None = Field(default=None, min_length=32, max_length=200)
 
     @field_validator("database_url")
     @classmethod
@@ -89,6 +94,12 @@ class Settings(BaseSettings):
         ]
         if enabled:
             raise ValueError(f"tracing must stay disabled: unset {', '.join(enabled)}")
+        return self
+
+    @model_validator(mode="after")
+    def _bridge_rules(self) -> Settings:
+        if (self.sheets_bridge_url is None) != (self.sheets_bridge_token is None):
+            raise ValueError("SHEETS_BRIDGE_URL and SHEETS_BRIDGE_TOKEN must be set together")
         return self
 
     @property

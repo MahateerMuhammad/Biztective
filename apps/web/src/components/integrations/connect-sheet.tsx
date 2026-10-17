@@ -70,9 +70,11 @@ export function ConnectSheet({ businessId, pending }: { businessId: string; pend
         </form>
       ) : (
         <ol className="grid list-decimal gap-2 pl-5" aria-label="Prove you own the spreadsheet">
-          <li>
-            Share the spreadsheet with <span className="font-mono">{target.service_account_email}</span> as an Editor.
-          </li>
+          {target.service_account_email ? (
+            <li>
+              Share the spreadsheet with <span className="font-mono">{target.service_account_email}</span> as an Editor.
+            </li>
+          ) : null}
           <li>
             Add a tab named <span className="font-mono">ROOT_VERIFY</span> and type{" "}
             {bound ? (

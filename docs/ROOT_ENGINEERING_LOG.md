@@ -1330,3 +1330,46 @@ Every Phase 6 objective listed above is implemented and covered by the tests in 
   - Sheets quotas (about 60 write requests per minute per user) are respected only through backoff, not a shared rate limiter.
 - **Commit hash and GitHub push status:** `42997a929c28cf24a65c8ca58599e7b02b8f0a3e`, pushed to `main` without force; `git ls-remote origin refs/heads/main` matched `git rev-parse HEAD`.
 - **Next-phase dependencies:** Phase 9 (baseline 12: hardening). Do not begin it in this session.
+
+## Phase 8 (completion) — Apps Script bridge and the real Google Sheets gate
+
+- **Date:** 2026-10-17
+- **Why:** the Phase 8 entry left the completion gate open, because no service-account key was available. The project owner's Google Cloud project enforces `iam.disableServiceAccountKeyCreation` ("secure by default"), and changing that organisation policy was judged too heavy. AMD-19 adds a second way to reach Google Sheets: an Apps Script web app inside the business's own spreadsheet.
+- **Changes:**
+  - `app/actions/bridge.py` (`BridgeClient`).
+  - `RetryingClient`, factored out of the REST client so both share retries and error classes.
+  - `SheetsApi` protocol.
+  - `SHEETS_BRIDGE_URL` and `SHEETS_BRIDGE_TOKEN` settings (validated, set together).
+  - `mode` in `GET …/integrations`.
+  - `integrations/apps_script/Code.gs` (container-bound, token in the body, plain-text cells, document lock, no deletes).
+  - Node tests of the real script source.
+  - A Python fake of the deployed bridge (POST → 302 → `script.googleusercontent.com`).
+  - `tests/actions/test_bridge.py`.
+  - The live test now supports both modes.
+  - The UI hides the "share with the service account" step in bridge mode.
+  - Docs: AMD-19 and notes in ARCHITECTURE §11 and SECURITY_MODEL SEC-15.
+- **Credentials handling:** the bridge token was generated locally (`secrets.token_urlsafe(36)`) and written to `services/api/.env.live` (mode 600, git-ignored; `.gitignore` updated). It was placed on the owner's clipboard inside the filled script; it never appeared in the conversation or in any committed file. The web-app URL and spreadsheet ID are not secrets on their own.
+- **Tests observed in this session:**
+  - `node --test integrations/apps_script/code.test.mjs`: 6/6. It covers bad token, placeholder token, other spreadsheet, unknown operation, bad JSON, tabs, plain-text writes, trimmed reads, the verification cell, malformed ranges and ragged rows, the cell cap and the lock.
+  - `pytest tests/actions`: 60 passed, 1 skipped (live).
+  - Full backend suite: **737 passed, 2 skipped (live), 5 deselected**, coverage 94.15%. `ruff`, `ruff format`, `mypy` (strict, 153 files): pass. Frontend typecheck, lint and Vitest 49/49: pass.
+- **Real Google Sheets (completion gate):**
+  - **Mode:** `apps_script`. Spreadsheet `1QE_KzJ8nbSB5moDey6t7xg9jFiKENvjSnI6V3eRBgm0` ("ROOT test"), owned by the project owner.
+  - **Bridge probe:**
+    - First attempt: 401 `bad_token`. The template, still holding the placeholder token, had been pasted.
+    - After the token line was replaced and a new version deployed, `titles` returned `{'Sheet1'}`.
+  - **`ROOT_LIVE_SHEETS_TESTS=1 pytest tests/actions/test_live_sheets.py`**, run six times:
+    - **Run 1 failed** with `SheetsError: destination_invalid`, raised in the test body. The traceback was not captured. The sheet shows that run's rows were written (row 2 of `ROOT Review Tasks`), and the executor's own read-back must have passed, because the `verified` assertion precedes the step that raised. So the failure was in the test's extra independent read. **Cause unknown; it did not recur.**
+    - Runs 2–6 passed. The two runs with output printed:
+      - `LIVE OK mode=apps_script action=6bbd2c0d-89d2-5057-b5b4-c57b0d3df553 rows={'ROOT Review Tasks': 1, 'ROOT Service Queue': 3} ranges={'ROOT Review Tasks': "'ROOT Review Tasks'!A6:L6", 'ROOT Service Queue': "'ROOT Service Queue'!A14:J16"}`
+      - `LIVE OK mode=apps_script action=d90f9056-f696-5ad8-a5ce-bd7ea46a0569 … ranges={'ROOT Review Tasks': "'ROOT Review Tasks'!A7:L7", 'ROOT Service Queue': "'ROOT Service Queue'!A17:J19"}`
+  - **What each run did:** a real investigation, an approved plan with a review task and three queue rows, binding with the ownership code written to `ROOT_VERIFY!A1`, execution through the job, status `verified`, then an independent read-back on a new connection.
+  - **Calls per execution:** 2 `titles`, 2 `read`, 4 `append` and a final 2 `titles` plus 2 `read`. Each bridge operation is a POST followed by the redirect fetch.
+  - **Owner check:** the owner can see every run's rows in the spreadsheet.
+- **Completion gate status:** **met**. An approved business action was executed against a real connected system (Google Sheets, through the business's Apps Script bridge) and independently verified. The service-account path (AMD-18) has still never run against real Google.
+- **Remaining risks:**
+  - Run 1's unexplained independent-read failure.
+  - Apps Script quotas and latency (about 1–1.5 s per call).
+  - The script runs as its deployer: if that person loses access or the deployment is removed, executions fail as `integration_misconfigured`.
+  - The live test adds rows to the owner's sheet on every run and deletes nothing.
+- **Commit hash and GitHub push status:** Appended below after commit.

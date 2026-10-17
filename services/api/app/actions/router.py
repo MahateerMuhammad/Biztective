@@ -243,7 +243,10 @@ def _integration(i: Integration, runtime: ActionRuntime) -> dict[str, Any]:
         "status": i.status,
         "spreadsheet_id": i.spreadsheet_id,
         "spreadsheet_url": spreadsheet_url(i.spreadsheet_id),
-        "service_account_email": runtime.account.email if runtime.account else None,
+        # Only the service-account mode needs the sheet shared with a robot account.
+        "service_account_email": runtime.account.email
+        if runtime.mode == "service_account" and runtime.account
+        else None,
         "verify_expires_at": i.verify_expires_at.isoformat()
         if i.verify_expires_at and i.status == "pending_verification"
         else None,
@@ -274,7 +277,8 @@ async def list_integrations(
         .order_by(Integration.created_at.desc())
     )
     return {
-        "available": runtime.account is not None,
+        "available": runtime.mode is not None,
+        "mode": runtime.mode,
         "items": [_integration(i, runtime) for i in rows],
     }
 
@@ -284,7 +288,7 @@ async def bind_google_sheet(
     request: Request, db: DbSession, tenant: IntegrationManager, body: BindSheet
 ) -> JSONResponse:
     runtime = _runtime(request)
-    if runtime.account is None:
+    if runtime.mode is None:
         raise ApiError(503, "integration_unavailable", "Google Sheets is not configured.")
     sid = spreadsheet_id(body.spreadsheet)
     if sid is None:

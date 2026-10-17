@@ -15,7 +15,7 @@ import re
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 from urllib.parse import quote
 
 import httpx
@@ -139,56 +139,30 @@ class TokenCache:
     expires_at: float = 0.0
 
 
-@dataclass
-class SheetsClient:
-    """One client per execution attempt; `calls` records operation, status and duration."""
+class SheetsApi(Protocol):
+    """What the executor needs from a destination, whichever way it is reached."""
 
-    account: ServiceAccount
+    calls: list[dict[str, Any]]
+
+    async def titles(self, sid: str) -> set[str]: ...
+    async def add_tabs(self, sid: str, titles: list[str]) -> None: ...
+    async def put_rows(self, sid: str, data: dict[str, list[list[str]]]) -> None: ...
+    async def read(self, sid: str, ranges: list[str]) -> list[list[list[str]]]: ...
+    async def append(self, sid: str, range_: str, rows: list[list[str]]) -> str | None: ...
+
+
+@dataclass(kw_only=True)
+class RetryingClient:
+    """Shared transport: one HTTP exchange per call, recorded in `calls` (operation, status,
+    duration; never contents), with retries for what was certainly not applied."""
+
     http: httpx.AsyncClient
-    tokens: TokenCache
     max_retries: int
     backoff: float
     sleep: Callable[[float], Awaitable[None]]
     on_write: Callable[[], None] = lambda: None
     clock: Callable[[], float] = time.time
     calls: list[dict[str, Any]] = field(default_factory=list)
-
-    # ------------------------------------------------------------------ transport
-
-    async def _token(self) -> str:
-        if self.tokens.token and self.clock() < self.tokens.expires_at - TOKEN_MARGIN:
-            return self.tokens.token
-        now = int(self.clock())
-        assertion = jwt.encode(  # type: ignore[no-untyped-call]  # untyped google-auth helper
-            self.account.signer,
-            {
-                "iss": self.account.email,
-                "scope": SCOPE,
-                "aud": TOKEN_URL,
-                "iat": now,
-                "exp": now + 3600,
-            },
-        )
-        response = await self._send(
-            "token",
-            "POST",
-            TOKEN_URL,
-            data={
-                "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
-                "assertion": assertion.decode(),
-            },
-        )
-        if response.status_code in (400, 401, 403):
-            raise SheetsError("integration_credentials_invalid", status=response.status_code)
-        if response.status_code != 200:
-            raise _status_error(response, write=False)
-        body = response.json()
-        token = body.get("access_token")
-        if not isinstance(token, str):
-            raise SheetsError("integration_credentials_invalid", status=response.status_code)
-        self.tokens.token = token
-        self.tokens.expires_at = now + float(body.get("expires_in", 3600))
-        return token
 
     async def _send(
         self,
@@ -227,15 +201,73 @@ class SheetsClient:
                 }
             )
 
+    async def _retrying(self, once: Callable[[], Awaitable[dict[str, Any]]]) -> dict[str, Any]:
+        """Run one operation. Retries only what was certainly not applied (or is a read);
+        an ambiguous write error is raised for the caller to reconcile."""
+        attempt = 0
+        while True:
+            try:
+                return await once()
+            except SheetsError as exc:
+                if not exc.retryable or exc.ambiguous or attempt >= self.max_retries:
+                    raise
+                delay = exc.retry_after
+                if delay is None:
+                    delay = min(MAX_RETRY_AFTER, self.backoff * 2**attempt)
+                attempt += 1
+                await self.sleep(delay)
+
+
+@dataclass(kw_only=True)
+class SheetsClient(RetryingClient):
+    """The Sheets REST API with a service account (ARCHITECTURE §11.1)."""
+
+    account: ServiceAccount
+    tokens: TokenCache
+
+    async def _token(self) -> str:
+        if self.tokens.token and self.clock() < self.tokens.expires_at - TOKEN_MARGIN:
+            return self.tokens.token
+        now = int(self.clock())
+        assertion = jwt.encode(  # type: ignore[no-untyped-call]  # untyped google-auth helper
+            self.account.signer,
+            {
+                "iss": self.account.email,
+                "scope": SCOPE,
+                "aud": TOKEN_URL,
+                "iat": now,
+                "exp": now + 3600,
+            },
+        )
+        response = await self._send(
+            "token",
+            "POST",
+            TOKEN_URL,
+            data={
+                "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+                "assertion": assertion.decode(),
+            },
+        )
+        if response.status_code in (400, 401, 403):
+            raise SheetsError("integration_credentials_invalid", status=response.status_code)
+        if response.status_code != 200:
+            raise _status_error(response, write=False)
+        body = response.json()
+        token = body.get("access_token")
+        if not isinstance(token, str):
+            raise SheetsError("integration_credentials_invalid", status=response.status_code)
+        self.tokens.token = token
+        self.tokens.expires_at = now + float(body.get("expires_in", 3600))
+        return token
+
     async def _call(
         self, op: str, method: str, url: str, *, write: bool = False, **kwargs: Any
     ) -> dict[str, Any]:
-        """One API operation. Retries only what was certainly not applied (or is a read);
-        an ambiguous write error is raised for the caller to reconcile."""
-        attempt = 0
         refreshed = False
-        while True:
-            try:
+
+        async def once() -> dict[str, Any]:
+            nonlocal refreshed
+            while True:
                 token = await self._token()
                 response = await self._send(
                     op,
@@ -253,14 +285,8 @@ class SheetsClient:
                     raise _status_error(response, write)
                 body: dict[str, Any] = response.json() if response.content else {}
                 return body
-            except SheetsError as exc:
-                if not exc.retryable or exc.ambiguous or attempt >= self.max_retries:
-                    raise
-                delay = exc.retry_after
-                if delay is None:
-                    delay = min(MAX_RETRY_AFTER, self.backoff * 2**attempt)
-                attempt += 1
-                await self.sleep(delay)
+
+        return await self._retrying(once)
 
     # ---------------------------------------------------------------------- API
 

@@ -34,3 +34,4 @@ npm-debug.log*
 # --- OS / editors ---
 .DS_Store
 .idea/
+services/api/.env.live
