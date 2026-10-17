@@ -31,19 +31,19 @@ jobs:
           docker build \
             -t ttl.sh/root2-mahateer-api-1.0.0:24h \
             -t ttl.sh/root2-mahateer-api-1.0.1:24h \
-            -t ttl.sh/root2-mahateer-api-1.0.5:24h \
+            -t ttl.sh/root2-mahateer-api-1.0.6:24h \
             services/api
       - name: Validate backend container security and runtime behavior
         run: |
           # 1. Non-root user check (UID 10001)
-          UID_VAL="$(docker run --rm --entrypoint id ttl.sh/root2-mahateer-api-1.0.5:24h -u)"
+          UID_VAL="$(docker run --rm --entrypoint id ttl.sh/root2-mahateer-api-1.0.6:24h -u)"
           test "$UID_VAL" = "10001"
 
           # 2. No embedded .env secrets inside image
-          docker run --rm --entrypoint sh ttl.sh/root2-mahateer-api-1.0.5:24h -c 'test ! -f /app/.env && test ! -f /app/.env.live && test ! -f /app/.env.supabase'
+          docker run --rm --entrypoint sh ttl.sh/root2-mahateer-api-1.0.6:24h -c 'test ! -f /app/.env && test ! -f /app/.env.live && test ! -f /app/.env.supabase'
 
           # 3. Fail-closed on missing required environment variables
-          if docker run --rm ttl.sh/root2-mahateer-api-1.0.5:24h >/dev/null 2>&1; then
+          if docker run --rm ttl.sh/root2-mahateer-api-1.0.6:24h >/dev/null 2>&1; then
             echo "Expected container to fail when DATABASE_URL is missing"
             exit 1
           fi
@@ -57,7 +57,7 @@ jobs:
             -e DATABASE_URL=postgresql+psycopg://root_app:placeholder@127.0.0.1:5432/root \
             -e SESSION_SECRET="$TEST_SECRET" \
             -e FRONTEND_ORIGIN=https://example.alternatefutures.ai \
-            ttl.sh/root2-mahateer-api-1.0.5:24h)"
+            ttl.sh/root2-mahateer-api-1.0.6:24h)"
           trap 'docker rm -f "$CID" >/dev/null 2>&1 || true' EXIT
           for _ in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:18000/api/v1/healthz | grep -q '"ok"'; then
@@ -71,8 +71,8 @@ jobs:
         run: |
           docker push ttl.sh/root2-mahateer-api-1.0.0:24h
           docker push ttl.sh/root2-mahateer-api-1.0.1:24h
-          docker push ttl.sh/root2-mahateer-api-1.0.5:24h
-          docker inspect --format='{{index .RepoDigests 0}}' ttl.sh/root2-mahateer-api-1.0.5:24h
+          docker push ttl.sh/root2-mahateer-api-1.0.6:24h
+          docker inspect --format='{{index .RepoDigests 0}}' ttl.sh/root2-mahateer-api-1.0.6:24h
 
   web-image:
     runs-on: ubuntu-24.04
@@ -83,21 +83,21 @@ jobs:
           docker build \
             -t ttl.sh/root2-mahateer-web-1.0.0:24h \
             -t ttl.sh/root2-mahateer-web-1.0.1:24h \
-            -t ttl.sh/root2-mahateer-web-1.0.5:24h \
+            -t ttl.sh/root2-mahateer-web-1.0.6:24h \
             apps/web
       - name: Validate frontend container security and runtime behavior
         run: |
           # 1. Non-root user check (UID 10001)
-          UID_VAL="$(docker run --rm --entrypoint id ttl.sh/root2-mahateer-web-1.0.5:24h -u)"
+          UID_VAL="$(docker run --rm --entrypoint id ttl.sh/root2-mahateer-web-1.0.6:24h -u)"
           test "$UID_VAL" = "10001"
 
           # 2. No embedded .env secrets inside image
-          docker run --rm --entrypoint sh ttl.sh/root2-mahateer-web-1.0.5:24h -c 'test ! -f /app/.env && test ! -f /app/.env.local'
+          docker run --rm --entrypoint sh ttl.sh/root2-mahateer-web-1.0.6:24h -c 'test ! -f /app/.env && test ! -f /app/.env.local'
 
           # 3. Production startup, /login health probe, security headers, and graceful SIGTERM shutdown
           CID="$(docker run -d -p 13000:3000 \
             -e BACKEND_URL=https://root-api-app.alternatefutures.ai \
-            ttl.sh/root2-mahateer-web-1.0.5:24h)"
+            ttl.sh/root2-mahateer-web-1.0.6:24h)"
           trap 'docker logs "$CID" || true; docker rm -f "$CID" >/dev/null 2>&1 || true' EXIT
           for _ in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:13000/login >/dev/null 2>&1; then
@@ -114,6 +114,6 @@ jobs:
         run: |
           docker push ttl.sh/root2-mahateer-web-1.0.0:24h
           docker push ttl.sh/root2-mahateer-web-1.0.1:24h
-          docker push ttl.sh/root2-mahateer-web-1.0.5:24h
-          docker inspect --format='{{index .RepoDigests 0}}' ttl.sh/root2-mahateer-web-1.0.5:24h
+          docker push ttl.sh/root2-mahateer-web-1.0.6:24h
+          docker inspect --format='{{index .RepoDigests 0}}' ttl.sh/root2-mahateer-web-1.0.6:24h
 

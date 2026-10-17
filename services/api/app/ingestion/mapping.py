@@ -114,6 +114,17 @@ def propose_mapping(kind: FileKind, headers: list[str]) -> FileMapping:
             mapping["status"] = "ambiguous"
             mapping["source"] = None
 
+    # A required column with no known header name is offered every unused header, so the owner
+    # can map their own naming ("Amount" → unit_price) instead of the file being refused.
+    taken = {m["source"] for m in columns.values() if m["source"]} | {
+        h for m in columns.values() for h in m["candidates"]
+    }
+    leftovers = [h for h in available if h not in taken]
+    for column in COLUMNS[kind]:
+        if column.required and columns[column.name]["status"] == "unmapped" and leftovers:
+            columns[column.name]["status"] = "ambiguous"
+            columns[column.name]["candidates"] = list(leftovers)
+
     missing = [
         c.name for c in COLUMNS[kind] if c.required and columns[c.name]["status"] == "unmapped"
     ]

@@ -273,3 +273,24 @@ def test_runtime_code_never_imports_the_generator() -> None:
                 assert not node.module.startswith("scripts"), path
             if isinstance(node, ast.Import):
                 assert all(not a.name.startswith("scripts") for a in node.names), path
+
+
+def test_unrecognized_headers_are_offered_for_required_columns() -> None:
+    headers = ["Line", "Ref", "When", "Buyer", "Item", "Count", "Amount"]
+    mapping = propose_mapping("orders", [h.lower() for h in headers])
+    cols = mapping["columns"]
+    assert cols["quantity"]["status"] == "ambiguous"
+    assert cols["quantity"]["source"] is None  # never guessed; the owner decides
+    assert set(cols["quantity"]["candidates"]) == {h.lower() for h in headers}
+    assert mapping["needs_confirmation"]
+    chosen: dict[str, str | None] = {
+        "order_line_id": "line",
+        "order_id": "ref",
+        "order_date": "when",
+        "customer_id": "buyer",
+        "product_id": "item",
+        "quantity": "count",
+        "unit_price": "amount",
+    }
+    final = confirm_mapping("orders", [h.lower() for h in headers], mapping, chosen)
+    assert final["columns"]["unit_price"]["source"] == "amount"

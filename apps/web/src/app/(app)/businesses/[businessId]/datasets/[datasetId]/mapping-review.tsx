@@ -88,7 +88,9 @@ export function MappingReview({
                   <span className="tabular-nums">{name}</span>
                   {column?.required ? " (required)" : " (optional)"}
                   <span className="block text-[13px] text-muted-foreground">
-                    {column?.status === "ambiguous"
+                    {column?.status === "ambiguous" && column.candidates.length > 3
+                      ? "No header name matched. Choose the column that holds this."
+                      : column?.status === "ambiguous"
                       ? `Several columns could match: ${column.candidates.join(", ")}`
                       : `Proposed from header "${column?.source}"`}
                   </span>
