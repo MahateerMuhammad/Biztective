@@ -225,7 +225,7 @@ test("main routes load fast and ship little JavaScript", async ({ page }) => {
 
 test("secondary screens meet WCAG 2.2 AA (axe)", async ({ page }) => {
   await page.goto("/login");
-  await expect(page.getByRole("heading", { name: "Sign in to ROOT" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
   await expectAccessible(page, "sign in");
   const home = await signIn(page);
   for (const section of SECTIONS.slice(1)) {

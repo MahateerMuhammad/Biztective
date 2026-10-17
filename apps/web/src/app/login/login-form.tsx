@@ -1,16 +1,30 @@
 "use client";
 
+import {
+  BarChart3,
+  Package,
+  Percent,
+  Receipt,
+  ShieldCheck,
+  ShoppingCart,
+  TrendingUp,
+  Users,
+  Wallet,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import {
+  AnimatedForm,
+  AuthTabs,
+  Ripple,
+  TechOrbitDisplay,
+  type FormField,
+  type Orbit,
+} from "@/components/ui/modern-animated-sign-in";
+import { SunMoonThemeToggle } from "@/components/ui/sun-moon-theme-toggle";
 import { postJson, resetCsrfToken } from "@/lib/api/client";
 import { ApiProblem, type User } from "@/lib/api/types";
-import { useHydrated } from "@/lib/use-hydrated";
 
 export function loginErrorMessage(error: unknown): string {
   if (error instanceof ApiProblem) {
@@ -28,22 +42,48 @@ export function loginErrorMessage(error: unknown): string {
   return "Sign-in failed. Please try again.";
 }
 
+const ORBITS: Orbit[] = [
+  { radius: 100, duration: 18, icons: [BarChart3, TrendingUp] },
+  { radius: 150, duration: 26, reverse: true, icons: [ShoppingCart, Package] },
+  { radius: 210, duration: 34, icons: [Users, Receipt] },
+  { radius: 270, duration: 42, reverse: true, icons: [Percent, Wallet] },
+  { radius: 320, duration: 50, icons: [ShieldCheck] },
+];
+
+// Matches the server's password policy (MIN_PASSWORD_LENGTH / MAX_PASSWORD_LENGTH), so a
+// password that could never have been set is caught before a request is spent on it.
+const FIELDS: FormField[] = [
+  {
+    id: "email",
+    label: "Email",
+    type: "email",
+    placeholder: "Enter your email address",
+    autoComplete: "username",
+    required: true,
+    maxLength: 254,
+  },
+  {
+    id: "password",
+    label: "Password",
+    type: "password",
+    placeholder: "Enter your password",
+    autoComplete: "current-password",
+    required: true,
+    minLength: 12,
+    maxLength: 128,
+  },
+];
+
 export function LoginForm() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
-  const hydrated = useHydrated();
   const [submitting, setSubmitting] = useState(false);
 
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
+  async function onSubmit(values: Record<string, string>) {
     setSubmitting(true);
     setError(null);
     try {
-      await postJson<User>("/api/v1/auth/login", {
-        email: String(form.get("email") ?? ""),
-        password: String(form.get("password") ?? ""),
-      });
+      await postJson<User>("/api/v1/auth/login", { email: values.email ?? "", password: values.password ?? "" });
       resetCsrfToken(); // the token is bound to the session, which just changed
       router.replace("/");
       router.refresh();
@@ -54,48 +94,31 @@ export function LoginForm() {
   }
 
   return (
-    <Card className="w-full max-w-sm">
-      <CardHeader>
-        <CardTitle>
-          <h1 className="text-lg font-semibold">Sign in to ROOT</h1>
-        </CardTitle>
-        <CardDescription>Use the account provided for your business.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form className="grid gap-4" onSubmit={onSubmit} noValidate>
-          <div className="grid gap-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              autoComplete="username"
-              required
-              aria-invalid={error ? true : undefined}
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              maxLength={128}
-              aria-invalid={error ? true : undefined}
-            />
-          </div>
-          {error ? (
-            <Alert variant="destructive" role="alert">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          ) : null}
-          <Button type="submit" disabled={!hydrated || submitting}>
-            {submitting ? "Signing in…" : "Sign in"}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+    <AuthTabs
+      corner={<SunMoonThemeToggle storageKey="root-theme" size={36} duration={900} />}
+      aside={
+        <>
+          <Ripple />
+          <TechOrbitDisplay text="ROOT" caption="Find out why your numbers changed." orbits={ORBITS} />
+        </>
+      }
+    >
+      <AnimatedForm
+        header="Welcome back"
+        subHeader="Sign in to ROOT"
+        helper="Use the account provided for your business."
+        fields={FIELDS}
+        submitLabel="Sign in"
+        submittingLabel="Signing in…"
+        error={error}
+        submitting={submitting}
+        onSubmit={(values) => void onSubmit(values)}
+        footer={
+          <p className="text-sm text-muted-foreground">
+            Forgot password? Ask whoever set up your ROOT account to reset it.
+          </p>
+        }
+      />
+    </AuthTabs>
   );
 }

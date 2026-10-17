@@ -1,10 +1,11 @@
 @import "tailwindcss";
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
     --font-heading: var(--font-sans);
-    --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: var(--font-jetbrains-mono), ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -55,33 +56,54 @@
     --radius-2xl: calc(var(--radius) * 1.8);
     --radius-3xl: calc(var(--radius) * 2.2);
     --radius-4xl: calc(var(--radius) * 2.6);
+    --color-skeleton: var(--skeleton);
+    --color-btn-border: var(--btn-border);
+    --animate-ripple: ripple 3.4s ease infinite;
+    --animate-orbit: orbit var(--orbit-duration, 20s) linear infinite;
+
+    @keyframes ripple {
+        0%, 100% { transform: translate(-50%, -50%) scale(1); }
+        50% { transform: translate(-50%, -50%) scale(0.9); }
+    }
+
+    /* --orbit-start spreads icons around the circle; the counter-rotation keeps them upright. */
+    @keyframes orbit {
+        from {
+            transform: rotate(var(--orbit-start, 0deg)) translateY(var(--orbit-radius)) rotate(calc(-1 * var(--orbit-start, 0deg)));
+        }
+        to {
+            transform: rotate(calc(var(--orbit-start, 0deg) + 360deg)) translateY(var(--orbit-radius)) rotate(calc(-1 * var(--orbit-start, 0deg) - 360deg));
+        }
+    }
 }
 
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
+    --background: #f4f4f5;
+    --foreground: #09090b;
+    --card: #ffffff;
+    --card-foreground: #09090b;
     --popover: oklch(1 0 0);
     --popover-foreground: oklch(0.145 0 0);
     --primary: oklch(0.205 0 0);
     --primary-foreground: oklch(0.985 0 0);
     --secondary: oklch(0.97 0 0);
     --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
+    --muted: #f4f4f5;
+    --muted-foreground: #63636c;
     --accent: oklch(0.97 0 0);
     --accent-foreground: oklch(0.205 0 0);
     --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
+    --border: #e4e4e7;
     --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
+    --ring: #18181b;
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
     --radius: 0.625rem;
+    --skeleton: oklch(0.92 0.01 255);
+    --btn-border: oklch(0.87 0.01 255);
     /* Kinds of statement (Phase 9): each pair meets WCAG 2.2 AA (≥ 4.5:1). */
     --fact: oklch(0.95 0.03 250);
     --fact-foreground: oklch(0.38 0.13 255);
@@ -106,24 +128,24 @@
 }
 
 .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
+    --background: #0a0a0b;
+    --foreground: #fafafa;
+    --card: #141417;
+    --card-foreground: #fafafa;
     --popover: oklch(0.205 0 0);
     --popover-foreground: oklch(0.985 0 0);
     --primary: oklch(0.922 0 0);
     --primary-foreground: oklch(0.205 0 0);
     --secondary: oklch(0.269 0 0);
     --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
+    --muted: #1c1c20;
+    --muted-foreground: #a1a1aa;
     --accent: oklch(0.269 0 0);
     --accent-foreground: oklch(0.985 0 0);
     --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
+    --border: #27272a;
     --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
+    --ring: #d4d4d8;
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
@@ -137,6 +159,38 @@
     --sidebar-accent-foreground: oklch(0.985 0 0);
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.556 0 0);
+    --skeleton: oklch(0.269 0 0);
+    --btn-border: oklch(1 0 0 / 15%);
+    /* Kinds of statement, dark: tinted surfaces, light text (each pair >= 4.5:1). */
+    --fact: oklch(0.3 0.07 255);
+    --fact-foreground: oklch(0.86 0.09 250);
+    --hypothesis: oklch(0.3 0.06 80);
+    --hypothesis-foreground: oklch(0.88 0.1 85);
+    --estimate: oklch(0.3 0.08 300);
+    --estimate-foreground: oklch(0.87 0.09 300);
+    --human: oklch(0.3 0.05 195);
+    --human-foreground: oklch(0.87 0.08 190);
+    --action: oklch(0.3 0.07 150);
+    --action-foreground: oklch(0.87 0.1 150);
+    --risk: oklch(0.3 0.09 27);
+    --risk-foreground: oklch(0.87 0.1 25);
+}
+
+/* Sign-in page, dark theme: navy look. Scoped to its wrapper so other pages keep their palette. */
+.dark .auth-surface {
+    --background: hsl(222 94% 5%);
+    --foreground: hsl(210 40% 98%);
+    --skeleton: hsl(218 36% 16%);
+    --input: hsl(219 63% 16%);
+    --border: hsl(219 40% 22%);
+    --btn-border: hsl(214 35% 26%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .animate-ripple,
+    .animate-orbit {
+        animation: none;
+    }
 }
 
 @layer base {

@@ -6,7 +6,7 @@ const KINDS = {
   fact: {
     label: "Fact",
     title: "Measured from your data",
-    className: "border-fact-foreground/20 bg-fact text-fact-foreground",
+    className: "border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-300",
   },
   hypothesis: {
     label: "Hypothesis",

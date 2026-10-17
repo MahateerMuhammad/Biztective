@@ -618,6 +618,8 @@ Writes use deterministic natural keys with `ON CONFLICT DO NOTHING` (or an upser
 
 A dependency enters only in the phase that first uses it (AGENTS.md R-8).
 
+> **Amended by AMD-21:** frontend also uses `motion` and `lucide-react` (sign-in page only).
+
 ## 14. Deployment architecture and rollback
 
 ### 14.1 Topology

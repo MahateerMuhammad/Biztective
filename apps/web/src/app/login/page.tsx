@@ -11,9 +11,5 @@ export default async function LoginPage() {
   if (await getMe()) {
     redirect("/");
   }
-  return (
-    <main className="flex min-h-dvh items-center justify-center p-4">
-      <LoginForm />
-    </main>
-  );
+  return <LoginForm />;
 }

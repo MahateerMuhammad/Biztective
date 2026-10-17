@@ -32,7 +32,7 @@ export { expect };
 export async function signIn(page: Page, who = email, secret = password) {
   await page.goto("/login");
   await page.getByLabel("Email").fill(who);
-  await page.getByLabel("Password").fill(secret);
+  await page.getByLabel("Password", { exact: true }).fill(secret);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/businesses\/[0-9a-f-]{36}$/);
   return page.url().replace(/^https?:\/\/[^/]+/, "");

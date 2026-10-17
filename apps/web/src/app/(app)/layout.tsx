@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { LogoutButton } from "@/components/logout-button";
+import { SunMoonThemeToggle } from "@/components/ui/sun-moon-theme-toggle";
 import { getMe } from "@/lib/api/server";
 
 /** Authenticated shell: every page below re-validates the session with the backend. */
@@ -37,6 +38,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           <span className="text-sm text-muted-foreground" data-testid="current-user">
             {me.user.display_name}
           </span>
+          <SunMoonThemeToggle storageKey="root-theme" size={36} duration={900} />
           <LogoutButton />
         </div>
       </header>

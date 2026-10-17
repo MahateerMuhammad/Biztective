@@ -11,7 +11,7 @@ test.beforeAll(() => {
 test("unauthenticated visitors are sent to sign-in", async ({ page }) => {
   await page.goto("/");
   await expect(page).toHaveURL(/\/login$/);
-  await expect(page.getByRole("heading", { name: "Sign in to ROOT" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
 
   await page.goto("/businesses/00000000-0000-0000-0000-000000000000");
   await expect(page).toHaveURL(/\/login$/);
@@ -29,7 +29,7 @@ test("pages are served with a nonce-based CSP", async ({ page }) => {
 test("wrong password shows an error without signing in", async ({ page }) => {
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(`${password}-wrong`);
+  await page.getByLabel("Password", { exact: true }).fill(`${password}-wrong`);
   await page.getByRole("button", { name: "Sign in" }).click();
   // Next.js also renders an (empty) route-announcer alert, so match ours by its text.
   await expect(
@@ -46,7 +46,7 @@ test("sign in, see the business shell, sign out", async ({ page, context }) => {
 
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(password);
+  await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
 
   await expect(page).toHaveURL(/\/businesses\/[0-9a-f-]{36}$/);
