@@ -206,7 +206,12 @@ export function SunMoonThemeToggle({
     if (initialized.current) return;
     initialized.current = true;
     if (!isControlled) {
-      const stored = storageKey ? window.localStorage.getItem(storageKey) : null;
+      let stored: string | null = null;
+      try {
+        stored = storageKey ? window.localStorage.getItem(storageKey) : null;
+      } catch {
+        // Storage can be denied by browser privacy settings; use the document theme.
+      }
       const initial: SunMoonTheme =
         stored === "light" || stored === "dark" ? stored : syncDocument ? readDocumentTheme() : defaultTheme;
       setInternalTheme(initial);
@@ -258,7 +263,11 @@ export function SunMoonThemeToggle({
     if (event.defaultPrevented) return;
     const next: SunMoonTheme = theme === "dark" ? "light" : "dark";
     if (!isControlled) setInternalTheme(next);
-    if (storageKey) window.localStorage.setItem(storageKey, next);
+    try {
+      if (storageKey) window.localStorage.setItem(storageKey, next);
+    } catch {
+      // The toggle still works for this page when preferences cannot be persisted.
+    }
     if (syncDocument) applyDocumentTheme(next, duration);
     onThemeChange?.(next);
   };
