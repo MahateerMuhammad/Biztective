@@ -95,14 +95,14 @@ jobs:
           CID="$(docker run -d -p 13000:3000 \
             -e BACKEND_URL=http://127.0.0.1:18000 \
             ttl.sh/root2-mahateer-web-1.0.0:24h)"
-          trap 'docker rm -f "$CID" >/dev/null 2>&1 || true' EXIT
+          trap 'docker logs "$CID" || true; docker rm -f "$CID" >/dev/null 2>&1 || true' EXIT
           for _ in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:13000/login >/dev/null 2>&1; then
               break
             fi
             sleep 1
           done
-          HEADERS="$(curl -fsSI http://127.0.0.1:13000/login)"
+          HEADERS="$(curl -fsSD - -o /dev/null http://127.0.0.1:13000/login)"
           echo "$HEADERS" | grep -iq "content-security-policy:"
           echo "$HEADERS" | grep -iq "x-frame-options: DENY"
           echo "$HEADERS" | grep -iq "x-content-type-options: nosniff"

@@ -28,6 +28,7 @@ COPY --from=builder --chown=10001:10001 /app/next.config.ts ./next.config.ts
 COPY --from=builder --chown=10001:10001 /app/public ./public
 COPY --from=builder --chown=10001:10001 /app/.next ./.next
 COPY --from=builder --chown=10001:10001 /app/node_modules ./node_modules
+COPY --from=deps --chown=10001:10001 /app/node_modules/typescript ./node_modules/typescript
 USER 10001:10001
 EXPOSE 3000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=15s --retries=3 \
