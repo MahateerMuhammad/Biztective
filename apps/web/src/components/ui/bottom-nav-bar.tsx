@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, useReducedMotion } from "motion/react";
-import type { LucideIcon } from "lucide-react";
+import { Loader2, type LucideIcon } from "lucide-react";
 
 import { cn } from "cn";
 
@@ -65,7 +65,7 @@ export function BottomNavBar({ items, className, stickyBottom = false, showAllLa
                 active ? "bg-primary/10 text-primary dark:bg-primary/15" : "text-muted-foreground hover:bg-muted hover:text-foreground",
               )}
             >
-              <Icon size={22} strokeWidth={2} aria-hidden="true" className="shrink-0" />
+              <NavIcon icon={Icon} />
               <motion.span
                 initial={false}
                 animate={
@@ -92,3 +92,13 @@ export function BottomNavBar({ items, className, stickyBottom = false, showAllLa
 }
 
 export default BottomNavBar;
+
+/** Shows a spinner in place of the icon while the clicked section is loading (instant feedback). */
+function NavIcon({ icon: Icon }: { icon: NavItem["icon"] }) {
+  const { pending } = useLinkStatus();
+  return pending ? (
+    <Loader2 size={22} strokeWidth={2} aria-hidden="true" className="shrink-0 animate-spin motion-reduce:animate-none" />
+  ) : (
+    <Icon size={22} strokeWidth={2} aria-hidden="true" className="shrink-0" />
+  );
+}
